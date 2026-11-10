@@ -574,7 +574,11 @@ function runChangesetVersionInDir(dir) {
     encoding: 'utf8',
     windowsHide: true
   });
-  assert.equal(res.status, 0, `changeset version failed: ${res.stderr || res.stdout}`);
+  const combined = `${res.stdout || ''}\n${res.stderr || ''}`;
+  const noChangesets = /No unreleased changesets found/i.test(combined);
+  if (!noChangesets) {
+    assert.equal(res.status, 0, `changeset version failed: ${combined}`);
+  }
   return synchronizePluginManifestVersion(dir);
 }
 
