@@ -121,7 +121,8 @@ export function evaluateLifecycleDelivery(input = {}) {
       redundantChecksAvoided: 0,
       delegatedAgentsCount: 0,
       delegationJustified: true
-    }
+    },
+    contextIntelligence = null // Optional P13 metrics: { cacheHitRate, fullDiscoveryAvoidance, incrementalRefreshRate, invalidationAccuracy, contextLoadCost, staleContextIncidents }
   } = input;
 
   // 1. Acceptance Criteria Completion
@@ -244,7 +245,19 @@ export function evaluateLifecycleDelivery(input = {}) {
           : efficiency.delegationJustified
           ? `justified (${efficiency.delegatedAgentsCount} specialized subagent(s))`
           : `excessive (${efficiency.delegatedAgentsCount} subagent(s))`
-    }
+    },
+    ...(contextIntelligence
+      ? {
+          contextIntelligence: {
+            cacheHitRate: contextIntelligence.cacheHitRate ?? null,
+            fullDiscoveryAvoidance: contextIntelligence.fullDiscoveryAvoidance ?? null,
+            incrementalRefreshRate: contextIntelligence.incrementalRefreshRate ?? null,
+            invalidationAccuracy: contextIntelligence.invalidationAccuracy ?? null,
+            contextLoadCost: contextIntelligence.contextLoadCost ?? null,
+            staleContextIncidents: contextIntelligence.staleContextIncidents ?? 0
+          }
+        }
+      : {})
   };
 
   return {

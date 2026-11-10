@@ -9,9 +9,38 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { recordDirtyContextHint } from './context-store.mjs';
 
 const VERIFICATION_CMD_REGEX =
   /\b(npm\s+(test|run\s+(test|lint|typecheck|check|build|format))|pnpm\s+(test|run\s+)?(test|lint|typecheck|check|build)|yarn\s+(test|lint|typecheck|build)|bun\s+(test|run\s+(test|lint|typecheck|build))|npx\s+(tsc|vitest|jest|eslint|prettier|playwright|astro\s+check)|node\s+--test|pytest|mypy|ruff\s+check|cargo\s+(test|check|clippy)|go\s+(test|vet)|gradle(w)?\s+(test|check)|mvn(w)?\s+test)\b/i;
+
+const CONTEXT_MUTATION_CMD_REGEX =
+  /\b(npm\s+(install|i|ci|uninstall|remove|update)|pnpm\s+(install|i|add|remove|up)|yarn\s+(install|add|remove)|bun\s+(install|add|remove)|pip\s+install|uv\s+(add|remove|sync)|cargo\s+add|go\s+get|git\s+(checkout|switch|pull|merge|rebase|reset|clean|worktree)|mv\b|rm\b|Remove-Item\b|Move-Item\b)\b/i;
+
+const FILE_MUTATION_TOOLS = new Set([
+  'write_file',
+  'edit_file',
+  'write_to_file',
+  'replace_file_content',
+  'multi_replace_file_content'
+]);
+
+/**
+ * Extract target file path from a file-mutation tool call.
+ * @param {object} args
+ * @returns {string | null}
+ */
+export function extractMutatedFilePath(args = {}) {
+  const candidate =
+    args.Path ||
+    args.path ||
+    args.TargetFile ||
+    args.targetFile ||
+    args.file_path ||
+    args.filePath ||
+    null;
+  return candidate ? String(candidate) : null;
+}
 
 /**
  * Normalize a command string to a stable signature for deduplication and retry counting.
@@ -44,6 +73,26 @@ export function updateVerificationTelemetry(payload, currentState = {}, maxRetri
 
   const toolCall = payload?.toolCall || {};
   const toolName = String(toolCall.name || '').toLowerCase();
+  if (FILE_MUTATION_TOOLS.has(toolName)) {
+    const mutatedFile = extractMutatedFilePath(toolCall.args);
+    state.lastCommandSignature = null;
+    state.dirtyContextHints = Array.isArray(currentState.dirtyContextHints)
+      ? [...currentState.dirtyContextHints]
+      : [];
+    if (mutatedFile) {
+      state.dirtyContextHints.push({
+        type: 'file_mutation',
+        toolName,
+        filePath: mutatedFile.replace(/\\/g, '/'),
+        stepIdx: payload.stepIdx ?? null
+      });
+      if (state.dirtyContextHints.length > 50) {
+        state.dirtyContextHints = state.dirtyContextHints.slice(-50);
+      }
+    }
+    return state;
+  }
+
   if (toolName !== 'run_command') {
     return state;
   }
@@ -53,6 +102,20 @@ export function updateVerificationTelemetry(payload, currentState = {}, maxRetri
   if (!sig || !VERIFICATION_CMD_REGEX.test(sig)) {
     // Non-verification command: reset lastCommandSignature if it might mutate state
     state.lastCommandSignature = null;
+    if (sig && CONTEXT_MUTATION_CMD_REGEX.test(sig)) {
+      state.dirtyContextHints = Array.isArray(currentState.dirtyContextHints)
+        ? [...currentState.dirtyContextHints]
+        : [];
+      state.dirtyContextHints.push({
+        type: 'command_mutation',
+        toolName: 'run_command',
+        command: sig,
+        stepIdx: payload.stepIdx ?? null
+      });
+      if (state.dirtyContextHints.length > 50) {
+        state.dirtyContextHints = state.dirtyContextHints.slice(-50);
+      }
+    }
     return state;
   }
 
@@ -111,6 +174,43 @@ async function main() {
     }
 
     const payload = rawInput.trim() ? JSON.parse(rawInput) : {};
+    const toolCall = payload?.toolCall || {};
+    const toolName = String(toolCall.name || '').toLowerCase();
+    const workspaceRoot =
+      Array.isArray(payload.workspacePaths) && payload.workspacePaths.length > 0
+        ? payload.workspacePaths[0]
+        : process.cwd();
+
+    // P13: Record dirty context hint when files or project state are mutated
+    if (FILE_MUTATION_TOOLS.has(toolName)) {
+      const targetPath = extractMutatedFilePath(toolCall.args);
+      if (targetPath) {
+        let relPath = targetPath;
+        try {
+          if (path.isAbsolute(targetPath) && workspaceRoot) {
+            relPath = path.relative(workspaceRoot, targetPath);
+          }
+        } catch {
+          // keep targetPath
+        }
+        recordDirtyContextHint(
+          workspaceRoot,
+          { type: 'file_mutation', toolName, filePath: relPath.replace(/\\/g, '/') },
+          { artifactDirectoryPath: payload.artifactDirectoryPath || null }
+        );
+      }
+    } else if (toolName === 'run_command') {
+      const rawCmd = String(toolCall.args?.CommandLine || toolCall.args?.command || '');
+      const sig = normalizeCommandSignature(rawCmd);
+      if (sig && CONTEXT_MUTATION_CMD_REGEX.test(sig)) {
+        recordDirtyContextHint(
+          workspaceRoot,
+          { type: 'command_mutation', toolName, command: sig },
+          { artifactDirectoryPath: payload.artifactDirectoryPath || null }
+        );
+      }
+    }
+
     const storageBase =
       payload.artifactDirectoryPath
         ? path.join(payload.artifactDirectoryPath, 'scratch')

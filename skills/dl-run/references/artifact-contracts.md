@@ -9,7 +9,11 @@ Store session artifacts in `<appDataDir>/brain/<conversation-id>/` (or consolida
 ```markdown
 # Project Context Profile
 - **Workspace Root**: `<path>`
+- **Project Key / Worktree Key**: `<projectKey> / <worktreeKey>`
 - **Git Revision / Branch**: `<sha> (<branch>)`
+- **P13 Context Cache Status**: `HIT | MISS | INCREMENTAL_REFRESH | FULL_REFRESH | FALLBACK_SESSION` (Storage: `<plugin-data|os-user-cache|session-fallback|memory-only>`)
+- **Sections Reused vs. Refreshed**: Reused `[...]`, Refreshed `[...]`
+- **Supporting Evidence Fingerprints**: `<manifest/lockfile/config/ci hashes>`
 - **Repository Topology**: `standalone | monorepo (<manager>) | multi-package`
 - **Languages & Runtimes**: `<verified languages + versions>`
 - **Frameworks & Libraries**: `<framework (evidence files, confidence: HIGH|MEDIUM|LOW)>`
@@ -25,6 +29,7 @@ Store session artifacts in `<appDataDir>/brain/<conversation-id>/` (or consolida
   - Build: `<cmd or N/A>`
 - **CI/CD & Deployment**: `<provider, workflow files, deploy target>`
 - **Coding Conventions & Local Rules**: `<summary from AGENTS.md / linter / tsconfig>`
+- **Live Task-Specific Files Inspected**: `<paths + live SHA-256>`
 - **Known Constraints & Unresolved Assumptions**: `<list>`
 ```
 
@@ -127,6 +132,14 @@ Store session artifacts in `<appDataDir>/brain/<conversation-id>/` (or consolida
 - **Review Rework**: `<count of actionable findings fixed>`
 - **Redundant Check Executions Avoided**: `<count>`
 - **Agent Delegation Efficiency**: `<single-agent | justified delegation summary>`
+
+## Context Intelligence Metrics (P13)
+- **Cache Hit Rate**: `<X% (hits / total lookups)>`
+- **Full Discovery Avoidance**: `<X% (hits + incremental refreshes / total lookups)>`
+- **Incremental Refresh Rate**: `<X% (targeted section refreshes / total refreshes)>`
+- **Invalidation Accuracy**: `<changed signals -> exact invalidated sections>`
+- **Context Load Cost**: `<measured durationMs + filesFingerprinted vs full scan>`
+- **Stale Context Incidents**: `<0>`
 
 ## Remaining Issues, Limitations & Next Action
 - **Remaining Issues / Limitations**: `<none or explicit list>`

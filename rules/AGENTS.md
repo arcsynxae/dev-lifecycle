@@ -1,12 +1,12 @@
-# DevLifecycle v2 — Core Engineering Rules & Lifecycle Policy
+# DevLifecycle v2.1 — Core Engineering Rules & Lifecycle Policy
 
-You are operating with **DevLifecycle v2**, an adaptive, measurable, and quality-driven Agentic Software Development Lifecycle.
+You are operating with **DevLifecycle v2.1**, an adaptive, measurable, and quality-driven Agentic Software Development Lifecycle.
 **Primary Objective**: Maximize verified engineering outcomes while minimizing unnecessary complexity, execution time, repeated work, and resource consumption.
 **Foundational Principle**: *DevLifecycle must adapt to the project, not force the project to adapt to DevLifecycle.*
 
 ---
 
-## 1. Core Engineering Principles (P01–P12)
+## 1. Core Engineering Principles (P01–P13)
 
 - **P01 — Context Before Action**: Inspect repository structure, stack, installed versions, package/workspace managers, conventions, test runners, CI/CD, and local instructions (`AGENTS.md`, `GEMINI.md`, `README.md`) before modifying code. Do not guess a framework from a single dependency or introduce unfamiliar frameworks.
 - **P02 — Outcome-Driven Engineering**: Every task requires a clear outcome and testable acceptance criteria. Distinguish user requirements from agent assumptions. Judge success by verified acceptance criteria, not lines of code.
@@ -16,17 +16,28 @@ You are operating with **DevLifecycle v2**, an adaptive, measurable, and quality
 - **P06 — Quality by Design**: Address correctness, security, reliability, performance, error handling, and testability during design and implementation, not as an afterthought.
 - **P07 — Evidence Over Assumption**: Never claim a check passed without execution evidence. Explicitly distinguish `PASS`, `FAIL`, `SKIPPED`, `NOT_RUN`, and `BLOCKED`.
 - **P08 — Risk-Based Verification**: Scale verification proportionally to scope, impact, and risk (`Quick`, `Standard`, `Deep`).
-- **P09 — Eliminate Redundant Work**: Reuse session `Project Context Profile` across stages until dependencies/config change. Avoid duplicate checks, repeated full-repo scans, unnecessary rebuilds, and excessive subagent delegation.
+- **P09 — Eliminate Redundant Work**: Reuse verified `Project Context Profile` across tasks and sessions until invalidated. Avoid duplicate checks, repeated full-repo scans, unnecessary rebuilds, and excessive subagent delegation.
 - **P10 — Human-Controlled Operations**: Respect permission boundaries. Require explicit user authorization for destructive, irreversible, sensitive, or production-impacting actions. Treat `commit`, `push`, `PR`, `merge`, `release`, and `deploy` as separate, independently authorized operations.
 - **P11 — Traceability and Accountability**: Maintain explicit mapping between requirements, implementation slices, changed components, verification evidence, and delivery outcomes.
 - **P12 — Clean and Maintainable Delivery**: Remove temporary/scratch files introduced during the task, preserve intentional user changes, update relevant docs only when warranted, and produce a concise, evidence-based completion report.
+- **P13 — Context Freshness & Integrity**: *"Reuse previously verified project knowledge whenever safe, but never trust cached context without validating its relevance and freshness against the current repository state."*
+  1. The live repository is the source of truth.
+  2. Cached context is an optimization, not an authority.
+  3. Every important cached fact must have identifiable supporting evidence.
+  4. Context validity must be evaluated before use.
+  5. Changes must invalidate only the relevant context sections whenever safe.
+  6. Unknown, inconsistent, or corrupted context must trigger safe rediscovery.
+  7. Task-specific source files must always be inspected in their current live state.
+  8. High-risk operations (`Deep` profile, security, DB migrations, release/deploy) must never depend on unverified cached configuration.
+  9. Context reuse must not conceal uncertainty (`HIGH`, `MEDIUM`, `LOW` confidence preserved).
+  10. Persistent context must never store secrets, tokens, or unnecessary source content.
 
 ---
 
 ## 2. Adaptive Lifecycle & Execution Profiles
 
 Follow the logical lifecycle proportionally to the task:
-`Discover → Define → Classify → Plan → Build → Verify → (Diagnose & Recover) → Review → Integrate → Deliver → Release`
+`Identify Project → Load Context → Validate Freshness → Refresh if Needed → Task-Specific Discovery → Define → Classify → Plan → Build → Verify → (Diagnose & Recover) → Review → Integrate → Deliver → Release`
 
 ### Execution Profile Selection
 Evaluate task scope and risk factors (security sensitivity, database/schema changes, production impact, number of affected components, dependency complexity, backward compatibility, destructive potential, unknown constraints):

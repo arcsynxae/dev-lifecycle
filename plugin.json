@@ -2,8 +2,8 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "dev-lifecycle",
   "displayName": "DevLifecycle",
-  "version": "2.0.0",
-  "description": "Universal, framework-agnostic, project-aware, adaptive, measurable, and quality-driven Agentic Software Development Lifecycle plugin for Google Antigravity.",
+  "version": "2.1.0",
+  "description": "Universal, framework-agnostic, project-aware, adaptive, measurable, and quality-driven Agentic Software Development Lifecycle plugin for Google Antigravity with P13 Persistent Project Context Intelligence.",
   "logo": "assets/logo.svg",
   "author": {
     "name": "Synxae Engineering",

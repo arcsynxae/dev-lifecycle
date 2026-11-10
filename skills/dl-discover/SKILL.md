@@ -1,39 +1,61 @@
 ---
 name: dl-discover
 description: >-
-  Universal, framework-agnostic repository and monorepo architecture discovery. Produces a verified Project Context Profile covering languages, frameworks, versions, package/workspace managers, affected package boundaries, verification commands, CI/CD pipelines, and confidence levels. Use at the start of a task or when inspecting an unfamiliar codebase.
+  Universal, framework-agnostic repository and monorepo architecture discovery with P13 Persistent Project Context Intelligence. Produces or incrementally refreshes a verified Project Context Profile covering languages, frameworks, versions, package/workspace managers, affected package boundaries, verification commands, CI/CD pipelines, evidence fingerprints, and confidence levels. Use at the start of a task, across sessions, or when inspecting an unfamiliar codebase.
 ---
 
-# `dl-discover` — Universal Project & Monorepo Intelligence
+# `dl-discover` — Universal Project & Persistent Context Intelligence (P01 & P13)
 
-Establish verified technical context (`P01 — Context Before Action`) before planning or modifying any repository. Never assume a stack from a single dependency, never assume a package manager exists, and never create a permanent discovery database in the project repository.
+Establish verified technical context (`P01 — Context Before Action`) while reusing previously verified project intelligence across tasks and Antigravity sessions (`P13 — Context Freshness & Integrity`). Never assume a stack from a single dependency, never trust stale cached context without freshness validation, and never write cache files into the user's repository.
 
 ---
 
 ## 1. Activation Conditions
 
 Activate `dl-discover` when:
-- Starting work in a repository that has no current session `Project Context Profile`.
-- Dependencies, workspace configuration, build scripts, or CI/CD workflows have changed since the last discovery pass.
-- The user invokes `/dl-discover` or asks to analyze repository architecture, monorepo structure, or available verification commands.
+- Starting work in a repository (`Identify Project → Load Context → Validate Freshness → Refresh if Needed → Task-Specific Discovery`).
+- Dependencies, lockfiles, workspace configuration, build scripts, branch/HEAD, or CI/CD workflows have changed since the last discovery pass.
+- The user invokes `/dl-discover` or asks to analyze, refresh, or clear cached repository architecture, monorepo structure, or verification commands.
 
 ---
 
 ## 2. Inputs
 
-- **Workspace Root Path**: Target repository or subdirectory.
-- **Optional Scope Hint**: Specific package, service, or git diff range under investigation.
+- **Workspace Root Path(s)**: Single repository root or multiple workspace roots.
+- **Optional Task Files (`--task-files`)**: Comma-separated list of task-relevant source files that must be inspected in their live state (`P13 #7`).
+- **Optional Changed Files (`--changed`)**: Comma-separated list of modified files for monorepo impact analysis.
+- **Optional Refresh Controls**:
+  - `--force-refresh`: Bypass cached sections and perform a full fresh discovery scan.
+  - `--clear-cache`: Delete the persistent cache entry for the target project/worktree.
 
 ---
 
-## 3. Discovery Procedure
+## 3. Discovery & P13 Freshness Procedure
 
-### Step 1: Run Automated Evidence Collection
-When Node.js is available, run the bundled deterministic discovery helper from the plugin root (or inspect equivalent files directly with `read_file`):
+### Step 1: Identify Project, Load Context & Validate Freshness
+When Node.js is available, run the bundled deterministic discovery & freshness helper from the plugin root:
 ```bash
-node "<plugin-root>/scripts/discover-project.mjs" "<workspace-path>"
+# Default: Load cached context, validate freshness, and reuse or incrementally refresh
+node "<plugin-root>/scripts/discover-project.mjs" "<workspace-path>" --task-files "src/index.ts"
+
+# Force full rediscovery (bypass cache)
+node "<plugin-root>/scripts/discover-project.mjs" "<workspace-path>" --force-refresh
+
+# Clear persistent project cache
+node "<plugin-root>/scripts/discover-project.mjs" "<workspace-path>" --clear-cache
+
+# Multi-folder workspace discovery (isolated per root)
+node "<plugin-root>/scripts/discover-project.mjs" --multi-root "<root-a>,<root-b>"
 ```
-This script inspects manifests, lockfiles, workspace declarations, CI/CD files, and git state without modifying the repository.
+The engine automatically executes the 5-step P13 entry flow:
+1. **Identify Project & Worktree**: Computes stable `projectKey` (Git common dir + root commit, or canonical path hash for non-Git repos) and `worktreeKey` (isolating separate Git worktrees and branches).
+2. **Load Persistent Context**: Reads from `${PLUGIN_DATA}` (when available in plugin hooks) or the OS user cache directory (`%LOCALAPPDATA%/dev-lifecycle/Cache` / `~/.cache/dev-lifecycle`), falling back gracefully to session scratch or memory-only mode if storage is restricted.
+3. **Validate Freshness**: Compares `git rev-parse HEAD`, branch, `git status --porcelain`, and SHA-256 fingerprints of key manifests, lockfiles, workspace definitions, framework configs, CI workflows, and instruction files.
+4. **Targeted Incremental Refresh**:
+   - **`VALID` (`HIT`)**: Reuses all 10 cached context sections without re-scanning the repository.
+   - **`PARTIAL_STALE` (`INCREMENTAL_REFRESH`)**: Recomputes **only** the invalidated sections (e.g., `impact` when a single source file changes, or `packageManagers`/`languages`/`frameworks`/`verificationCommands` when `package.json` changes) while preserving unaffected verified sections.
+   - **`MISSING` / `INVALID` / `FULL_STALE`**: Performs full discovery and repairs the cache safely.
+5. **Live Task-Specific Inspection (`P13 #7`)**: Always reads the live state and hash of task-targeted source files (`liveTaskFiles`) directly from disk—never from cached summaries.
 
 ### Step 2: Inspect Repository Instructions & Local Rules First
 Check for and read existing project guidance before making architectural assumptions:
@@ -68,23 +90,25 @@ Record the exact commands defined by the project (never invent tools not present
 ## 4. Expected Outputs
 
 Produce a **Project Context Profile** (as a session artifact in `<appDataDir>/brain/<conversation-id>/project-context-profile.md` for `Standard`/`Deep` tasks, or concise inline summary for `Quick` tasks) containing:
-1. Repository Topology (`standalone` | `monorepo` | `multi-package`)
-2. Verified Technology Stack with Installed Versions & Confidence Levels (`HIGH` | `MEDIUM` | `LOW`)
-3. Application & Package Boundaries + Dependency Graph
-4. Exact Development & Verification Commands
-5. Coding Conventions & Architectural Constraints
-6. CI/CD & Deployment Configuration
-7. Unresolved Assumptions
+1. Project Identity (`projectKey`, `worktreeKey`) & Repository Topology (`standalone` | `monorepo` | `multi-package`)
+2. Context Cache Status (`HIT` | `MISS` | `INCREMENTAL_REFRESH` | `FULL_REFRESH` | `FALLBACK_SESSION`), Storage Tier, Reused vs. Refreshed Sections, and Evidence Fingerprints
+3. Verified Technology Stack with Installed Versions & Confidence Levels (`HIGH` | `MEDIUM` | `LOW`)
+4. Application & Package Boundaries + Dependency Graph
+5. Exact Development & Verification Commands
+6. Coding Conventions & Architectural Constraints
+7. CI/CD & Deployment Configuration
+8. Live Task-Specific Files Inspected & Unresolved Assumptions
 
 ---
 
 ## 5. Completion Conditions
 
-`dl-discover` is complete when sufficient verified technical context exists to determine a safe, convention-compliant implementation and verification approach (`Stage 1 Success Condition`).
+`dl-discover` is complete when a freshness-validated `Project Context Profile` and live task-file inspection exist to determine a safe, convention-compliant implementation and verification approach (`Stage 1 Success Condition`).
 
 ---
 
 ## 6. Safety Boundaries
 
-- **Read-Only Discovery**: Never modify repository files, install packages, or run mutating build commands during discovery.
-- **Session Caching (`P09`)**: Reuse the generated `Project Context Profile` across subsequent lifecycle stages; re-run discovery only for segments invalidated by config, dependency, or structural changes.
+- **Read-Only Repository Discovery**: Never modify repository files, install packages, or write cache files inside the user's repository or installed plugin folder.
+- **High-Risk Freshness Guarantee (`P13 #8`)**: Never rely on unverified cached configuration for `Deep`-profile tasks, security/auth changes, database migrations, or release/deployment workflows.
+- **Secret Hygiene (`P13 #10`)**: Never store `.env` values, credentials, private keys, tokens, or raw source files in persistent context cache records.

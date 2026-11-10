@@ -31,9 +31,10 @@ Activate `dl-run` when:
 ## 3. Adaptive Workflow Responsibilities
 
 ### Phase 1: Discover & Define (Stages 1–2 | Gate A)
-1. **Discover (`Stage 1`)**:
-   - Check if a valid `Project Context Profile` already exists in the current session (`<appDataDir>/brain/<conversation-id>`).
-   - If absent or invalidated by dependency/config edits, run discovery (`node ./scripts/discover-project.mjs <workspace-path>` or follow `dl-discover`) to identify languages, frameworks, versions, package/workspace managers, monorepo boundaries, commands, CI/CD, and repo instructions.
+1. **Discover (`Stage 1` — `Identify Project → Load Context → Validate Freshness → Refresh if Needed → Task-Specific Discovery`)**:
+   - Run `node ./scripts/discover-project.mjs <workspace-path> --task-files "<files>"` (or follow `dl-discover`).
+   - Reuse persistent project context when `contextCache.freshnessStatus === 'VALID'` (`HIT`), perform targeted section recomputation on `PARTIAL_STALE` (`INCREMENTAL_REFRESH`), or perform full discovery on `MISSING`/`INVALID`/`FULL_STALE`.
+   - Always inspect the current live state of task-specific source files (`P13 #7`) and never rely on unverified cached configuration for `Deep` or high-risk operations (`P13 #8`).
 2. **Define (`Stage 2`)**:
    - Formulate the `Task Contract`: intended outcome, functional/nonfunctional requirements, authorized scope, constraints, testable acceptance criteria, assumptions, and out-of-scope items.
    - Evaluate **Gate A (Requirement Readiness / Definition of Ready)**:

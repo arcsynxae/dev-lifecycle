@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Validate and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run P13 Context Intelligence Test Suite
+        run: node tests/context-intelligence.test.mjs
+
+      - name: Run DevLifecycle Acceptance Test Suite
+        run: node tests/run-tests.mjs
