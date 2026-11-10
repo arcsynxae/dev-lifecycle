@@ -1,5 +1,11 @@
 # dev-lifecycle
 
+## 2.1.1
+
+### Patch Changes
+
+- 457769b: Harden P13 Git freshness validation and canonical context contract consistency, prevent skipped CLI checks from inflating pass counts, sanitize dirty-context telemetry signals, introduce Changesets SemVer automation with `plugin.json` synchronization, and add a deterministic runtime-only plugin distribution packager (`package:plugin`).
+
 ## 2.1.0
 
 ### Minor Changes
