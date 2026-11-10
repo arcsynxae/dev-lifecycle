@@ -1,6 +1,6 @@
 {
   "name": "dev-lifecycle",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "description": "Development, testing, SemVer release automation, and clean runtime packaging workspace for the DevLifecycle Google Antigravity plugin.",
   "type": "module",
