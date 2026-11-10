@@ -1,0 +1,22 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "dev-lifecycle",
+  "displayName": "DevLifecycle",
+  "version": "2.0.0",
+  "description": "Universal, framework-agnostic, project-aware, adaptive, measurable, and quality-driven Agentic Software Development Lifecycle plugin for Google Antigravity.",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "Synxae Engineering",
+    "url": "https://github.com/synxae/dev-lifecycle"
+  },
+  "homepage": "https://github.com/synxae/dev-lifecycle#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/synxae/dev-lifecycle.git"
+  },
+  "suggestedPrompts": [
+    "Run DevLifecycle (dl-run) to implement a feature or fix a bug with adaptive verification",
+    "Discover this repository architecture and generate a Project Context Profile (dl-discover)",
+    "Verify current changes, run progressive quality gates, and check Definition of Done (dl-verify)"
+  ]
+}

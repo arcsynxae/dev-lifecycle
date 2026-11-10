@@ -1,0 +1,42 @@
+{
+  "dev-lifecycle-safety-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_file|edit_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/pre-tool-safety.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "dev-lifecycle-verification-tracker": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./scripts/post-tool-tracker.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "dev-lifecycle-stop-gate": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./scripts/stop-gate.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

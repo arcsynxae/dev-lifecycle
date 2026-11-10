@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+  <defs>
+    <linearGradient id="dlGrad" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <linearGradient id="dlCore" x1="36" y1="36" x2="92" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.25" />
+    </linearGradient>
+  </defs>
+  <!-- Outer adaptive lifecycle ring with 10% safe margin (r=46 centered at 64,64) -->
+  <circle cx="64" cy="64" r="46" stroke="url(#dlGrad)" stroke-width="6" stroke-linecap="round" stroke-dasharray="62 10" />
+  <!-- Inner quality shield / diamond -->
+  <path d="M64 28L94 46V82L64 100L34 82V46L64 28Z" fill="url(#dlCore)" stroke="url(#dlGrad)" stroke-width="3.5" stroke-linejoin="round" />
+  <!-- Verified checkmark + execution pulse -->
+  <path d="M48 65L59 76L82 51" stroke="#10B981" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Stage nodes -->
+  <circle cx="64" cy="18" r="5" fill="#38BDF8" />
+  <circle cx="104" cy="41" r="5" fill="#6366F1" />
+  <circle cx="104" cy="87" r="5" fill="#10B981" />
+  <circle cx="64" cy="110" r="5" fill="#10B981" />
+  <circle cx="24" cy="87" r="5" fill="#6366F1" />
+  <circle cx="24" cy="41" r="5" fill="#38BDF8" />
+</svg>
