@@ -646,10 +646,11 @@ runTest('VER-03', 'Major Version: 2.1.0 + major changeset bumps package.json & p
 // VER-04: Manifest Sync
 // ---------------------------------------------------------------------------
 runTest('VER-04', 'Manifest Sync: sync-version.mjs enforces package.json === plugin.json, preserves fields, and detects drift', () => {
-  // 1. Verify current repo manifests are in sync
+  // 1. Verify current repo manifests are in sync and valid SemVer
   const repoCheck = checkVersionConsistency(PLUGIN_ROOT);
   assert.equal(repoCheck.consistent, true);
-  assert.equal(repoCheck.packageVersion, '2.1.0');
+  assert.equal(repoCheck.packageVersion, repoCheck.pluginVersion);
+  assert.match(repoCheck.packageVersion, /^\d+\.\d+\.\d+$/);
 
   // 2. Test drift detection and field preservation in temp dir
   const dir = makeTempDir('ver04-sync');
@@ -708,11 +709,34 @@ runTest('VER-05', 'No Double Bump: pending repository changeset bumps 2.1.0 -> 2
     fs.copyFileSync(path.join(PLUGIN_ROOT, 'plugin.json'), path.join(dir, 'plugin.json'));
     fs.copyFileSync(path.join(PLUGIN_ROOT, 'CHANGELOG.md'), path.join(dir, 'CHANGELOG.md'));
 
+    const changesetFile = path.join(dir, '.changeset', 'v2-1-1-reliability-release-engineering.md');
+    if (!fs.existsSync(changesetFile)) {
+      // On the Version PR branch (where 2.1.0 -> 2.1.1 already occurred and the changeset was consumed),
+      // verify running changeset version on the already-bumped repo state is a no-op (stays 2.1.1),
+      // then seed 2.1.0 + the changeset to verify the 2.1.0 -> 2.1.1 single-bump transition.
+      const alreadyBumpedRun = runChangesetVersionInDir(dir);
+      assert.equal(alreadyBumpedRun.version, '2.1.1');
+
+      const pkg210 = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+      pkg210.version = '2.1.0';
+      fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg210, null, 2) + '\n', 'utf8');
+
+      const plugin210 = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf8'));
+      plugin210.version = '2.1.0';
+      fs.writeFileSync(path.join(dir, 'plugin.json'), JSON.stringify(plugin210, null, 2) + '\n', 'utf8');
+
+      fs.writeFileSync(
+        changesetFile,
+        '---\n"dev-lifecycle": patch\n---\n\nHarden P13 Git freshness validation and canonical context contract consistency.\n',
+        'utf8'
+      );
+    }
+
     // First run consumes .changeset/v2-1-1-reliability-release-engineering.md -> 2.1.1
     const firstRun = runChangesetVersionInDir(dir);
     assert.equal(firstRun.version, '2.1.1');
     assert.equal(
-      fs.existsSync(path.join(dir, '.changeset', 'v2-1-1-reliability-release-engineering.md')),
+      fs.existsSync(changesetFile),
       false,
       'Changeset file must be consumed after first version bump'
     );
