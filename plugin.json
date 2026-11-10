@@ -7,12 +7,12 @@
   "logo": "assets/logo.svg",
   "author": {
     "name": "Synxae Engineering",
-    "url": "https://github.com/synxae/dev-lifecycle"
+    "url": "https://github.com/arcsynxae/dev-lifecycle"
   },
-  "homepage": "https://github.com/synxae/dev-lifecycle#readme",
+  "homepage": "https://github.com/arcsynxae/dev-lifecycle#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/synxae/dev-lifecycle.git"
+    "url": "https://github.com/arcsynxae/dev-lifecycle.git"
   },
   "suggestedPrompts": [
     "Run DevLifecycle (dl-run) to implement a feature or fix a bug with adaptive verification",

@@ -9,7 +9,7 @@ This guide covers all officially supported ways to install, verify, update, and 
 | Requirement | Minimum Version | Purpose |
 | :--- | :--- | :--- |
 | **Google Antigravity** | App `>= 1.22` / CLI `>= 2.0` | Host IDE, agent runtime, and `agy plugin` CLI |
-| **Node.js** | `>= 20.0.0` (`node` on `PATH`) | Executes zero-dependency `.mjs` lifecycle & P13 context scripts |
+| **Node.js** | `>= 20.0.0` (CI verified on **Node.js v26 Latest LTS**) | Executes zero-dependency `.mjs` lifecycle & P13 context scripts |
 | **Git** *(Recommended)* | `>= 2.30` (`git` on `PATH`) | Enables commit/branch/worktree P13 freshness validation (non-Git projects also work via selective file fingerprinting) |
 
 > [!NOTE]
