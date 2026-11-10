@@ -1,4 +1,4 @@
-# DevLifecycle (`dev-lifecycle`) v2.1.0
+# DevLifecycle (`dev-lifecycle`) v2.0.0
 
 **Universal, Framework-Agnostic, Project-Aware, Adaptive, Measurable & Quality-Driven Agentic Software Development Lifecycle Plugin for Google Antigravity — with P13 Persistent Project Context Intelligence.**
 
