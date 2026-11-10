@@ -9,7 +9,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { recordDirtyContextHint } from './context-store.mjs';
+import {
+  classifyCommandMutationSignal,
+  recordDirtyContextHint,
+  sanitizeForCache
+} from './context-store.mjs';
 
 const VERIFICATION_CMD_REGEX =
   /\b(npm\s+(test|run\s+(test|lint|typecheck|check|build|format))|pnpm\s+(test|run\s+)?(test|lint|typecheck|check|build)|yarn\s+(test|lint|typecheck|build)|bun\s+(test|run\s+(test|lint|typecheck|build))|npx\s+(tsc|vitest|jest|eslint|prettier|playwright|astro\s+check)|node\s+--test|pytest|mypy|ruff\s+check|cargo\s+(test|check|clippy)|go\s+(test|vet)|gradle(w)?\s+(test|check)|mvn(w)?\s+test)\b/i;
@@ -48,7 +52,7 @@ export function extractMutatedFilePath(args = {}) {
  * @returns {string}
  */
 export function normalizeCommandSignature(cmd) {
-  return String(cmd || '').trim().replace(/\s+/g, ' ');
+  return sanitizeForCache(String(cmd || '').trim().replace(/\s+/g, ' '));
 }
 
 /**
@@ -103,13 +107,14 @@ export function updateVerificationTelemetry(payload, currentState = {}, maxRetri
     // Non-verification command: reset lastCommandSignature if it might mutate state
     state.lastCommandSignature = null;
     if (sig && CONTEXT_MUTATION_CMD_REGEX.test(sig)) {
+      const semanticSignal = classifyCommandMutationSignal(rawCmd) || 'COMMAND_MUTATION';
       state.dirtyContextHints = Array.isArray(currentState.dirtyContextHints)
         ? [...currentState.dirtyContextHints]
         : [];
       state.dirtyContextHints.push({
         type: 'command_mutation',
         toolName: 'run_command',
-        command: sig,
+        signal: semanticSignal,
         stepIdx: payload.stepIdx ?? null
       });
       if (state.dirtyContextHints.length > 50) {
@@ -201,11 +206,11 @@ async function main() {
       }
     } else if (toolName === 'run_command') {
       const rawCmd = String(toolCall.args?.CommandLine || toolCall.args?.command || '');
-      const sig = normalizeCommandSignature(rawCmd);
-      if (sig && CONTEXT_MUTATION_CMD_REGEX.test(sig)) {
+      if (rawCmd && CONTEXT_MUTATION_CMD_REGEX.test(rawCmd)) {
+        const semanticSignal = classifyCommandMutationSignal(rawCmd) || 'COMMAND_MUTATION';
         recordDirtyContextHint(
           workspaceRoot,
-          { type: 'command_mutation', toolName, command: sig },
+          { type: 'command_mutation', toolName, signal: semanticSignal },
           { artifactDirectoryPath: payload.artifactDirectoryPath || null }
         );
       }

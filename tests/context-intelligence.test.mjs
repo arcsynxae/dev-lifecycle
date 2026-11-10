@@ -40,6 +40,7 @@ import {
 import { handleSessionStartContext } from '../scripts/session-start-context.mjs';
 import { evaluatePreToolSafety } from '../scripts/pre-tool-safety.mjs';
 import { updateVerificationTelemetry } from '../scripts/post-tool-tracker.mjs';
+import { normalizeTestOutcome, summarizeTestResults } from '../scripts/lifecycle-check.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,10 +51,12 @@ const results = [];
 function runTest(id, name, fn) {
   const start = performance.now();
   try {
-    const details = fn();
+    const rawDetails = fn();
+    const outcome = normalizeTestOutcome(rawDetails);
     const durationMs = Number((performance.now() - start).toFixed(2));
-    results.push({ id, name, status: 'PASS', durationMs, details: details || 'Verified' });
-    console.log(`  ✔ [${id}] ${name} (${durationMs}ms)`);
+    results.push({ id, name, status: outcome.status, durationMs, details: outcome.details });
+    const icon = outcome.status === 'PASS' ? '✔' : outcome.status === 'SKIPPED' || outcome.status === 'NOT_RUN' ? '↷' : '✖';
+    console.log(`  ${icon} [${id}] ${name} [${outcome.status}] (${durationMs}ms)`);
   } catch (err) {
     const durationMs = Number((performance.now() - start).toFixed(2));
     results.push({ id, name, status: 'FAIL', durationMs, error: err.message });
@@ -782,13 +785,14 @@ runTest('P13-14', 'Hook Compatibility: SessionStart, PreToolUse, and PostToolUse
 // ---------------------------------------------------------------------------
 // Summary Output
 // ---------------------------------------------------------------------------
-const passed = results.filter((r) => r.status === 'PASS').length;
-const failed = results.filter((r) => r.status === 'FAIL').length;
+const summary = summarizeTestResults(results);
 
 console.log('\n======================================================================');
-console.log(` P13 Test Summary: ${passed}/${results.length} PASSED, ${failed} FAILED`);
+console.log(
+  ` P13 Test Summary: ${summary.passed} PASSED, ${summary.skipped} SKIPPED, ${summary.notRun} NOT_RUN, ${summary.failed} FAILED (Total: ${summary.total})`
+);
 console.log('======================================================================');
 
-if (failed > 0) {
+if (summary.failed > 0 || summary.blocked > 0) {
   process.exit(1);
 }

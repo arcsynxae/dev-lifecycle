@@ -6,22 +6,45 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    name: Validate and Test
+  test-and-package:
+    name: Validate, Test & Package Clean Plugin
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Run P13 Context Intelligence Test Suite
-        run: node tests/context-intelligence.test.mjs
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run DevLifecycle Acceptance Test Suite
-        run: node tests/run-tests.mjs
+      - name: Verify manifest version consistency (package.json === plugin.json)
+        run: npm run version:check
+
+      - name: Run full DevLifecycle verification suite (45 scenarios)
+        run: npm test
+
+      - name: Stage and validate clean runtime plugin distribution
+        run: npm run package:plugin
+
+      - name: Upload clean runtime plugin archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-lifecycle-clean-plugin
+          path: dist/dev-lifecycle-v*.zip
+          if-no-files-found: error

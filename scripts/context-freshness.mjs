@@ -183,8 +183,8 @@ function collectSelectiveSourceSnapshot(rootDir, maxFiles = 200) {
  * @param {Array<{name: string, path: string}>} [knownPackages=[]]
  * @returns {object}
  */
-export function collectRepositorySnapshot(workspaceDir, identity = null, knownPackages = []) {
-  const projIdentity = identity || resolveProjectIdentity(workspaceDir);
+export function collectRepositorySnapshot(workspaceDir, identity = null, knownPackages = [], options = {}) {
+  const projIdentity = identity || resolveProjectIdentity(workspaceDir, options);
   const rootDir = projIdentity.canonicalRoot;
   const rootEntries = listDirEntries(rootDir);
 
@@ -260,29 +260,57 @@ export function collectRepositorySnapshot(workspaceDir, identity = null, knownPa
 
   // 6. Git working tree status or Non-Git selective source snapshot
   let gitStatusFiles = [];
+  let gitStatusOk = true;
+  let gitStatusError = null;
   let workingTreeStatusHash = null;
   let nonGitSourceSnapshot = null;
 
   if (projIdentity.isGitRepo) {
-    const statusRes = runGitSafe(rootDir, ['status', '--porcelain=v1', '-uall']);
-    const lines = statusRes.ok && statusRes.stdout
-      ? statusRes.stdout.split(/\r?\n/).filter(Boolean)
-      : [];
+    if (projIdentity.gitMetadataOk === false) {
+      gitStatusOk = false;
+      gitStatusError = projIdentity.gitMetadataError || 'Git repository metadata verification failed';
+      workingTreeStatusHash = null;
+      nonGitSourceSnapshot = collectSelectiveSourceSnapshot(rootDir);
+    } else {
+      const statusRes = runGitSafe(rootDir, ['status', '--porcelain=v1', '-uall'], options);
+      if (!statusRes.ok) {
+        gitStatusOk = false;
+        gitStatusError = statusRes.stderr || 'git status command failed';
+        workingTreeStatusHash = null;
+        nonGitSourceSnapshot = collectSelectiveSourceSnapshot(rootDir);
+      } else {
+        const lines = statusRes.stdout
+          ? statusRes.stdout.split(/\r?\n/).filter(Boolean)
+          : [];
 
-    const dirtyContentHashes = [];
-    for (const line of lines) {
-      const m = line.match(/^\s*([MADRCU?!]{1,2})\s+(.*)$/);
-      const statusCode = m ? m[1] : line.slice(0, 2).trim();
-      const rawPath = (m ? m[2] : line.slice(3)).trim().replace(/^"(.*)"$/, '$1');
-      const finalPath = rawPath.includes(' -> ') ? rawPath.split(' -> ').pop().trim() : rawPath;
-      const normPath = finalPath.replace(/\\/g, '/');
-      gitStatusFiles.push({ status: statusCode, path: normPath });
+        const dirtyContentHashes = [];
+        for (const line of lines) {
+          const m = line.match(/^\s*([MADRCU?!]{1,2})\s+(.*)$/);
+          const statusCode = m ? m[1] : line.slice(0, 2).trim();
+          const rawPath = (m ? m[2] : line.slice(3)).trim().replace(/^"(.*)"$/, '$1');
+          let oldPath = null;
+          let finalPath = rawPath;
+          if (rawPath.includes(' -> ')) {
+            const parts = rawPath.split(' -> ').map((p) => p.trim().replace(/^"(.*)"$/, '$1'));
+            oldPath = parts[0].replace(/\\/g, '/');
+            finalPath = parts[parts.length - 1];
+          }
+          const normPath = finalPath.replace(/\\/g, '/');
+          gitStatusFiles.push({
+            status: statusCode,
+            path: normPath,
+            ...(oldPath ? { oldPath } : {})
+          });
 
-      // Include content hash for dirty files so subsequent edits to an already-dirty file are caught
-      const fp = fingerprintFile(path.join(rootDir, normPath));
-      dirtyContentHashes.push(`${statusCode}:${normPath}:${fp ? fp.sha256 : 'deleted'}`);
+          // Include content hash for dirty files so subsequent edits to an already-dirty file are caught
+          const fp = fingerprintFile(path.join(rootDir, normPath));
+          dirtyContentHashes.push(
+            `${statusCode}:${oldPath ? `${oldPath}->` : ''}${normPath}:${fp ? fp.sha256 : 'deleted'}`
+          );
+        }
+        workingTreeStatusHash = sha256(JSON.stringify(dirtyContentHashes), 32);
+      }
     }
-    workingTreeStatusHash = sha256(JSON.stringify(dirtyContentHashes), 32);
   } else {
     nonGitSourceSnapshot = collectSelectiveSourceSnapshot(rootDir);
   }
@@ -292,6 +320,9 @@ export function collectRepositorySnapshot(workspaceDir, identity = null, knownPa
     branch: projIdentity.branch,
     isDetachedHead: projIdentity.isDetachedHead,
     isGitRepo: projIdentity.isGitRepo,
+    gitMetadataOk: projIdentity.gitMetadataOk !== false,
+    gitStatusOk,
+    gitStatusError,
     workingTreeStatusHash,
     gitStatusFiles,
     fileFingerprints,
@@ -488,7 +519,7 @@ export function buildContextEvidence(profile, snapshot, identity) {
  * @returns {object}
  */
 export function validateContextFreshness(workspaceDir, cachedRecord, options = {}) {
-  const identity = options.identity || resolveProjectIdentity(workspaceDir);
+  const identity = options.identity || resolveProjectIdentity(workspaceDir, options);
 
   if (!cachedRecord || !cachedRecord.snapshot || !cachedRecord.contextSections) {
     return {
@@ -499,17 +530,18 @@ export function validateContextFreshness(workspaceDir, cachedRecord, options = {
       changedFiles: [],
       changedCategories: ['FULL_INVALIDATION'],
       reasons: ['No valid cached project context record present.'],
-      currentSnapshot: collectRepositorySnapshot(workspaceDir, identity)
+      currentSnapshot: collectRepositorySnapshot(workspaceDir, identity, [], options)
     };
   }
 
   const cachedSnap = cachedRecord.snapshot;
   const knownPackages = cachedRecord.contextSections?.workspacePackages?.value?.packages || [];
-  const currentSnap = collectRepositorySnapshot(workspaceDir, identity, knownPackages);
+  const currentSnap = collectRepositorySnapshot(workspaceDir, identity, knownPackages, options);
 
   const changedFilesSet = new Set();
   const changedCategoriesSet = new Set();
   const reasons = [];
+  let isUnverifiable = false;
 
   // 0. Check if relocated from another path
   if (cachedRecord.projectIdentity?.canonicalRoot !== identity.canonicalRoot) {
@@ -554,56 +586,83 @@ export function validateContextFreshness(workspaceDir, cachedRecord, options = {
   }
 
   // 4. Git-specific freshness checks (HEAD, branch, working tree status, commit diff)
-  if (identity.isGitRepo) {
-    const branchChanged = cachedSnap.branch !== currentSnap.branch;
-    const headChanged = cachedSnap.headCommit !== currentSnap.headCommit;
+  if (identity.isGitRepo || cachedSnap.isGitRepo) {
+    if (
+      cachedSnap.isGitRepo !== identity.isGitRepo ||
+      identity.gitMetadataOk === false ||
+      currentSnap.gitStatusOk === false ||
+      cachedSnap.gitStatusOk === false ||
+      !identity.headCommit ||
+      !cachedSnap.headCommit
+    ) {
+      isUnverifiable = true;
+      changedCategoriesSet.add('FULL_INVALIDATION');
+      reasons.push(
+        `Git repository freshness cannot be verified (${
+          currentSnap.gitStatusError ||
+          identity.gitMetadataError ||
+          'incomplete Git metadata or working-tree status'
+        }); refusing cached HIT and triggering full rediscovery.`
+      );
+    } else {
+      const branchChanged = cachedSnap.branch !== currentSnap.branch;
+      const headChanged = cachedSnap.headCommit !== currentSnap.headCommit;
 
-    if (branchChanged) {
-      reasons.push(`Git branch switched from "${cachedSnap.branch}" to "${currentSnap.branch}".`);
-    }
+      if (branchChanged) {
+        reasons.push(`Git branch switched from "${cachedSnap.branch}" to "${currentSnap.branch}".`);
+      }
 
-    if (headChanged) {
-      reasons.push(`Git HEAD changed from "${cachedSnap.headCommit}" to "${currentSnap.headCommit}".`);
-      if (
-        cachedSnap.headCommit &&
-        cachedSnap.headCommit !== 'UNBORN' &&
-        currentSnap.headCommit &&
-        currentSnap.headCommit !== 'UNBORN'
-      ) {
-        const diffRes = runGitSafe(identity.canonicalRoot, [
-          'diff',
-          '--name-only',
-          cachedSnap.headCommit,
-          currentSnap.headCommit
-        ]);
-        if (diffRes.ok) {
-          const diffFiles = diffRes.stdout
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-          for (const df of diffFiles) {
-            changedFilesSet.add(df);
-            for (const cat of classifyChangedFile(df)) {
+      if (headChanged) {
+        reasons.push(`Git HEAD changed from "${cachedSnap.headCommit}" to "${currentSnap.headCommit}".`);
+        if (
+          cachedSnap.headCommit &&
+          cachedSnap.headCommit !== 'UNBORN' &&
+          currentSnap.headCommit &&
+          currentSnap.headCommit !== 'UNBORN'
+        ) {
+          const diffRes = runGitSafe(
+            identity.canonicalRoot,
+            ['diff', '--name-only', cachedSnap.headCommit, currentSnap.headCommit],
+            options
+          );
+          if (diffRes.ok) {
+            const diffFiles = diffRes.stdout
+              .split(/\r?\n/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            for (const df of diffFiles) {
+              changedFilesSet.add(df);
+              for (const cat of classifyChangedFile(df)) {
+                changedCategoriesSet.add(cat);
+              }
+            }
+          } else {
+            // Conservative fallback when commit history cannot be compared
+            isUnverifiable = true;
+            changedCategoriesSet.add('FULL_INVALIDATION');
+            reasons.push('Git commit diff between cached and current HEAD unavailable; triggering full rediscovery.');
+          }
+        } else {
+          changedCategoriesSet.add('FULL_INVALIDATION');
+        }
+      }
+
+      // Even if HEAD and branch match, check live working tree changes
+      if (cachedSnap.workingTreeStatusHash !== currentSnap.workingTreeStatusHash) {
+        reasons.push('Git working tree / staged / untracked status changed.');
+        for (const item of [...(cachedSnap.gitStatusFiles || []), ...(currentSnap.gitStatusFiles || [])]) {
+          if (item.oldPath) {
+            changedFilesSet.add(item.oldPath);
+            for (const cat of classifyChangedFile(item.oldPath)) {
               changedCategoriesSet.add(cat);
             }
           }
-        } else {
-          // Conservative fallback when commit history cannot be compared
-          changedCategoriesSet.add('FULL_INVALIDATION');
-          reasons.push('Git commit diff between cached and current HEAD unavailable; triggering full rediscovery.');
-        }
-      } else {
-        changedCategoriesSet.add('FULL_INVALIDATION');
-      }
-    }
-
-    // Even if HEAD and branch match, check live working tree changes
-    if (cachedSnap.workingTreeStatusHash !== currentSnap.workingTreeStatusHash) {
-      reasons.push('Git working tree / staged / untracked status changed.');
-      for (const item of currentSnap.gitStatusFiles || []) {
-        changedFilesSet.add(item.path);
-        for (const cat of classifyChangedFile(item.path)) {
-          changedCategoriesSet.add(cat);
+          if (item.path) {
+            changedFilesSet.add(item.path);
+            for (const cat of classifyChangedFile(item.path)) {
+              changedCategoriesSet.add(cat);
+            }
+          }
         }
       }
     }
@@ -650,7 +709,9 @@ export function validateContextFreshness(workspaceDir, cachedRecord, options = {
     determineInvalidatedSections(changedCategories);
 
   let status = 'FRESH';
-  if (invalidatedSections.length === CONTEXT_SECTION_KEYS.length) {
+  if (isUnverifiable) {
+    status = 'UNVERIFIABLE';
+  } else if (invalidatedSections.length === CONTEXT_SECTION_KEYS.length) {
     status = 'STALE';
   } else if (invalidatedSections.length > 0 || taskImpactInvalidated || changedFiles.length > 0) {
     status = 'PARTIAL_STALE';

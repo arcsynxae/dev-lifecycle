@@ -9,10 +9,13 @@ Store session artifacts in `<appDataDir>/brain/<conversation-id>/` (or consolida
 ```markdown
 # Project Context Profile
 - **Workspace Root**: `<path>`
-- **Project Key / Worktree Key**: `<projectKey> / <worktreeKey>`
+- **Project ID / Common Repo Key / Worktree Key**: `<projectId> / <commonRepoKey> / <worktreeKey>`
 - **Git Revision / Branch**: `<sha> (<branch>)`
-- **P13 Context Cache Status**: `HIT | MISS | INCREMENTAL_REFRESH | FULL_REFRESH | FALLBACK_SESSION` (Storage: `<plugin-data|os-user-cache|session-fallback|memory-only>`)
-- **Sections Reused vs. Refreshed**: Reused `[...]`, Refreshed `[...]`
+- **P13 Context Intelligence (`profile.contextIntelligence`)**:
+  - `cacheStatus`: `MISS | HIT | INCREMENTAL_REFRESH | FULL_REDISCOVERY | FORCED_REFRESH`
+  - `freshnessStatus`: `INITIAL_SNAPSHOT | FRESH | PARTIAL_STALE | STALE | CORRUPTED_REBUILT | SCHEMA_MISMATCH_REBUILT | UNVERIFIABLE`
+  - `storageTier`: `plugin-data | os-user-cache | explicit-cache-dir | session-fallback | memory-only | disabled` (`persisted: true|false`)
+- **Sections Reused vs. Recomputed**: `sectionsReused`: `[...]`, `sectionsRecomputed`: `[...]`
 - **Supporting Evidence Fingerprints**: `<manifest/lockfile/config/ci hashes>`
 - **Repository Topology**: `standalone | monorepo (<manager>) | multi-package`
 - **Languages & Runtimes**: `<verified languages + versions>`
@@ -29,7 +32,7 @@ Store session artifacts in `<appDataDir>/brain/<conversation-id>/` (or consolida
   - Build: `<cmd or N/A>`
 - **CI/CD & Deployment**: `<provider, workflow files, deploy target>`
 - **Coding Conventions & Local Rules**: `<summary from AGENTS.md / linter / tsconfig>`
-- **Live Task-Specific Files Inspected**: `<paths + live SHA-256>`
+- **Live Task-Specific File Metadata (`taskSpecificFiles`)**: `<path, exists, sizeBytes, lineCount, liveSha256 (metadata only; read source via read_file before editing)>`
 - **Known Constraints & Unresolved Assumptions**: `<list>`
 ```
 
