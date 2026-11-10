@@ -26,9 +26,23 @@ export function evaluatePreToolSafety(payload) {
   const toolName = String(toolCall.name || '').toLowerCase();
   const args = toolCall.args || {};
 
-  // 1. Evaluate file mutation tools (write_file, edit_file)
-  if (toolName === 'write_file' || toolName === 'edit_file') {
-    const targetPath = String(args.Path || args.path || '').replace(/\\/g, '/');
+  // 1. Evaluate file mutation tools (write_file, edit_file, write_to_file, replace_file_content, multi_replace_file_content)
+  if (
+    toolName === 'write_file' ||
+    toolName === 'edit_file' ||
+    toolName === 'write_to_file' ||
+    toolName === 'replace_file_content' ||
+    toolName === 'multi_replace_file_content'
+  ) {
+    const rawTarget =
+      args.Path ||
+      args.path ||
+      args.TargetFile ||
+      args.targetFile ||
+      args.file_path ||
+      args.filePath ||
+      '';
+    const targetPath = String(rawTarget).replace(/\\/g, '/');
     const baseName = targetPath.split('/').pop() || '';
 
     // Block path traversal outside normal paths or writing raw private keys

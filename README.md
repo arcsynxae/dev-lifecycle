@@ -1,6 +1,6 @@
-# DevLifecycle (`dev-lifecycle`) v2.0.0
+# DevLifecycle (`dev-lifecycle`) v2.1.0
 
-**Universal, Framework-Agnostic, Project-Aware, Adaptive, Measurable & Quality-Driven Agentic Software Development Lifecycle Plugin for Google Antigravity.**
+**Universal, Framework-Agnostic, Project-Aware, Adaptive, Measurable & Quality-Driven Agentic Software Development Lifecycle Plugin for Google Antigravity — with P13 Persistent Project Context Intelligence.**
 
 > **Primary Principle**: *DevLifecycle must adapt to the project, not force the project to adapt to DevLifecycle.*
 
@@ -8,9 +8,10 @@
 
 ## 1. Overview
 
-**DevLifecycle** (`dev-lifecycle`) packages a complete, adaptive Agentic Software Development Lifecycle into a native Google Antigravity plugin. It helps engineering teams and AI agents consistently produce:
+**DevLifecycle** (`dev-lifecycle` v2.1.0) packages a complete, adaptive Agentic Software Development Lifecycle into a native Google Antigravity plugin. It helps engineering teams and AI agents consistently produce:
 
 - Correct, maintainable, well-structured software with minimal, reviewable diffs.
+- Persistent, freshness-validated project intelligence across tasks and Antigravity sessions (`P13 — Context Freshness & Integrity`) with targeted incremental rediscovery.
 - Evidence-based automated verification scaled proportionally to change risk.
 - Traceable engineering decisions from requirements (`Task Contract`) to final delivery (`Delivery Record`).
 - Strict human-controlled permission boundaries for destructive, sensitive, or production-impacting operations.
@@ -22,18 +23,18 @@
 
 ```text
 dev-lifecycle/
-├── plugin.json                               # Official Antigravity v1 plugin manifest
+├── plugin.json                               # Official Antigravity v1 plugin manifest (v2.1.0)
 ├── README.md                                 # Installation, usage, and architecture reference
-├── hooks.json                                # Deterministic PreToolUse, PostToolUse, and Stop hooks
+├── hooks.json                                # SessionStart, PreToolUse, PostToolUse, and Stop hooks
 ├── assets/
 │   └── logo.svg                              # High-contrast square SVG plugin icon
 ├── rules/
-│   └── AGENTS.md                             # Persistent Core Principles (P01-P12), Gates, DoR & DoD
+│   └── AGENTS.md                             # Persistent Core Principles (P01-P13), Gates, DoR & DoD
 ├── skills/
 │   ├── dl-run/                               # End-to-end adaptive lifecycle execution
 │   │   ├── SKILL.md
 │   │   └── references/artifact-contracts.md
-│   ├── dl-discover/                          # Universal repo, monorepo & CI/CD discovery
+│   ├── dl-discover/                          # Universal repo, monorepo & P13 context intelligence
 │   │   ├── SKILL.md
 │   │   └── references/monorepo-and-stack-heuristics.md
 │   ├── dl-plan/                              # Task Contract, Gate A (DoR), risk classification & slicing
@@ -42,7 +43,7 @@ dev-lifecycle/
 │   ├── dl-implement/                         # Focused, minimal-diff slice implementation (Gate B)
 │   │   └── SKILL.md
 │   ├── dl-verify/                            # Evidence-based verification (Gate C & Stage 9)
-│   │   ├── SKILL.md
+│   │   │   └── SKILL.md
 │   │   └── references/ci-and-verification-guide.md
 │   ├── dl-review/                            # Spec, quality & security review (Gate D)
 │   │   └── SKILL.md
@@ -59,17 +60,21 @@ dev-lifecycle/
 │   ├── security-reviewer.md                  # Read-only threat & vulnerability reviewer
 │   └── release-engineer.md                   # Delivery integrity & controlled release specialist
 ├── scripts/
+│   ├── session-start-context.mjs             # SessionStart hook: lightweight P13 cache status check
 │   ├── pre-tool-safety.mjs                   # PreToolUse hook: allow / ask / force_ask / deny gate
-│   ├── post-tool-tracker.mjs                 # PostToolUse hook: verification & bounded retry telemetry
+│   ├── post-tool-tracker.mjs                 # PostToolUse hook: verification telemetry & P13 dirty hints
 │   ├── stop-gate.mjs                         # Stop hook: clean delivery termination check
-│   ├── discover-project.mjs                  # Universal Project & Monorepo Intelligence CLI/module
+│   ├── context-store.mjs                     # P13 project identity, storage tiers, atomic I/O & metrics
+│   ├── context-freshness.mjs                 # P13 deterministic freshness & granular invalidation engine
+│   ├── discover-project.mjs                  # Universal Project, Monorepo & Incremental Rediscovery CLI
 │   ├── classify-task.mjs                     # 8-factor risk classifier & bounded recovery engine
 │   └── lifecycle-check.mjs                   # DoR, 10-point DoD, Clean Repo & Metrics evaluator
 ├── tests/
-│   └── run-tests.mjs                         # Executable validation + Scenarios A-J acceptance suite
+│   ├── run-tests.mjs                         # Executable validation + Scenarios A-J acceptance suite
+│   └── context-intelligence.test.mjs         # P13 Persistent Context Intelligence suite (P13-01..P13-14)
 ├── docs/
 │   ├── RESEARCH_AND_COMPATIBILITY.md         # Antigravity runtime capability & compatibility matrix
-│   └── ARCHITECTURE.md                       # Detailed design rationale, state model & gate specs
+│   └── ARCHITECTURE.md                       # Detailed design rationale, P13 freshness & gate specs
 └── examples/
     └── WORKFLOW_SCENARIOS.md                 # Walkthroughs of Scenarios A-J
 ```
@@ -98,18 +103,19 @@ Or register it per-workspace via `.agents/plugins.json`:
 }
 ```
 
-### Run Executable Acceptance Tests
+### Run Executable Acceptance & P13 Context Intelligence Tests
 ```bash
 node ./tests/run-tests.mjs
+node ./tests/context-intelligence.test.mjs
 ```
 
 ---
 
 ## 4. Adaptive Lifecycle Model & Execution Profiles
 
-DevLifecycle adapts its workflow across 11 logical stages:
+DevLifecycle adapts its workflow across the P13-aware entry flow and 11 logical stages:
 
-`Discover → Define → Classify → Plan → Build → Verify → (Diagnose & Recover) → Review → Integrate → Deliver → Release`
+`Identify Project → Load Context → Validate Freshness → Refresh if Needed → Task-Specific Discovery → Define → Classify → Plan → Build → Verify → (Diagnose & Recover) → Review → Integrate → Deliver → Release`
 
 | Execution Profile | Target Tasks | Planning & Artifacts | Agent Configuration | Verification & Review |
 | :--- | :--- | :--- | :--- | :--- |

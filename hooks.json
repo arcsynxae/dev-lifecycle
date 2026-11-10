@@ -1,9 +1,19 @@
 {
+  "dev-lifecycle-session-context": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node ./scripts/session-start-context.mjs",
+        "timeout": 10
+      }
+    ]
+  },
   "dev-lifecycle-safety-gate": {
     "enabled": true,
     "PreToolUse": [
       {
-        "matcher": "run_command|write_file|edit_file",
+        "matcher": "run_command|write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content",
         "hooks": [
           {
             "type": "command",
@@ -18,7 +28,7 @@
     "enabled": true,
     "PostToolUse": [
       {
-        "matcher": "run_command",
+        "matcher": "run_command|write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content",
         "hooks": [
           {
             "type": "command",
