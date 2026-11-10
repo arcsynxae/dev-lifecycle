@@ -39,7 +39,22 @@
 | **CI Workflow (`.github/workflows/*.yml`)** | `ciCd` | All other 9 sections (`9/10`) |
 | **Deployment Config (`Dockerfile`, `wrangler.toml`)** | `deployment` | All other 9 sections (`9/10`) |
 | **Instructions (`AGENTS.md`, `README.md`)** | `projectInstructions` | All other 9 sections (`9/10`) |
+| **Git Evidence Failure (`UNVERIFIABLE`)** | Full Rediscovery (`10/10`) — never returns `HIT` when `git status` / `git diff` / `git` binary fails | None |
 | **Corrupted JSON / Schema Mismatch** | Full Rediscovery (`10/10`) + Atomic Cache Repair | None |
+
+### D. Live Task-Specific File Metadata (`taskSpecificFiles`) & Dirty Hint Safety
+- **`inspectLiveTaskFiles()` Contract**: Returns live file metadata (`exists`, `sizeBytes`, `lineCount`, `liveSha256`, `inspectedLiveAt`) directly from the working tree without caching raw source code. Agents must still read the actual file contents via `read_file` before modifying code.
+- **Dirty Hint Secret Safety (`REL-05`)**: `recordDirtyContextHint()` and `post-tool-tracker.mjs` classify state-mutating commands into semantic signals (`DEPENDENCY_MUTATION`, `GIT_STATE_MUTATION`, `FILESYSTEM_MUTATION`) rather than persisting raw shell command strings that could contain tokens or credentials.
+
+---
+
+## 3. Clean Plugin Distribution & Automated SemVer Architecture (v2.1.1)
+
+- **Automated Semantic Versioning (`@changesets/cli` + `tooling/sync-version.mjs`)**:
+  - `package.json` (`"private": true`) and `.changeset/config.json` (`"privatePackages": { "version": true, "tag": false }`) manage version bumps and `CHANGELOG.md` generation.
+  - `tooling/sync-version.mjs` deterministically synchronizes `plugin.json.version` to `package.json.version` during `npm run version-packages` and verifies zero version drift in CI via `npm run version:check`.
+- **Clean Runtime-Only Distribution (`tooling/package-plugin.mjs`)**:
+  - Stages only the 33 runtime-required files (`plugin.json`, `README.md`, `hooks.json`, `assets/logo.svg`, `rules/AGENTS.md`, 7 `agents/*.md`, 8 `skills/*/SKILL.md` + 7 `skills/*/references/*.md`, and 9 `scripts/*.mjs`) into `dist/plugin/dev-lifecycle`, validates the staged directory independently (`validateStagedPluginDirectory` + `agy plugin validate --strict`), and archives `dist/dev-lifecycle-v<version>.zip`.
 
 ---
 

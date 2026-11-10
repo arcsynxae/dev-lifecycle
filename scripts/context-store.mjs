@@ -44,6 +44,33 @@ export const CONTEXT_SECTION_KEYS = Object.freeze([
   'deployment'
 ]);
 
+export const CANONICAL_CACHE_STATUSES = Object.freeze([
+  'MISS',
+  'HIT',
+  'INCREMENTAL_REFRESH',
+  'FULL_REDISCOVERY',
+  'FORCED_REFRESH'
+]);
+
+export const CANONICAL_FRESHNESS_STATUSES = Object.freeze([
+  'INITIAL_SNAPSHOT',
+  'FRESH',
+  'PARTIAL_STALE',
+  'STALE',
+  'CORRUPTED_REBUILT',
+  'SCHEMA_MISMATCH_REBUILT',
+  'UNVERIFIABLE'
+]);
+
+export const CANONICAL_STORAGE_TIERS = Object.freeze([
+  'plugin-data',
+  'os-user-cache',
+  'explicit-cache-dir',
+  'session-fallback',
+  'memory-only',
+  'disabled'
+]);
+
 // In-memory session fallback store when disk storage is completely restricted/unwritable
 const memoryFallbackStore = new Map();
 const memoryMetricsStore = new Map();
@@ -150,20 +177,32 @@ export function canonicalizePath(targetPath) {
  * Execute a read-only Git command safely in a specific working directory.
  * @param {string} cwd
  * @param {string[]} args
+ * @param {object} [options={}]
  * @returns {{ ok: boolean, stdout: string, stderr: string }}
  */
-export function runGitSafe(cwd, args) {
+export function runGitSafe(cwd, args, options = {}) {
+  if (options?.simulateGitFailure === true) {
+    return {
+      ok: false,
+      stdout: '',
+      stderr: 'Simulated Git failure (simulateGitFailure=true)'
+    };
+  }
+  const gitBin = options?.gitBinary || process.env.DEV_LIFECYCLE_GIT_BIN || 'git';
   try {
-    const res = spawnSync('git', args, {
+    const res = spawnSync(gitBin, args, {
       cwd,
       encoding: 'utf8',
       timeout: 3000,
       windowsHide: true
     });
-    if (res.status === 0) {
-      return { ok: true, stdout: String(res.stdout || '').trim(), stderr: '' };
+    if (res.error) {
+      return { ok: false, stdout: '', stderr: res.error.message || 'Failed to spawn git binary' };
     }
-    return { ok: false, stdout: '', stderr: String(res.stderr || '').trim() };
+    if (res.status === 0) {
+      return { ok: true, stdout: String(res.stdout || '').replace(/[\r\n]+$/, ''), stderr: '' };
+    }
+    return { ok: false, stdout: '', stderr: String(res.stderr || '').trim() || `git exited with status ${res.status}` };
   } catch (err) {
     return { ok: false, stdout: '', stderr: err.message };
   }
@@ -175,13 +214,16 @@ export function runGitSafe(cwd, args) {
  * and repository relocation via rootCommit / manifest lineage fingerprint.
  *
  * @param {string} workspaceDir
+ * @param {object} [options={}]
  * @returns {object}
  */
-export function resolveProjectIdentity(workspaceDir) {
+export function resolveProjectIdentity(workspaceDir, options = {}) {
   const canonicalTarget = canonicalizePath(workspaceDir);
   const gitMarker = findEnclosingGitMarker(canonicalTarget);
 
   let isGitRepo = false;
+  let gitMetadataOk = true;
+  let gitMetadataError = null;
   let canonicalRoot = canonicalTarget;
   let relativeSubdir = '';
   let gitDir = null;
@@ -198,6 +240,11 @@ export function resolveProjectIdentity(workspaceDir) {
     const rel = path.posix.relative(canonicalRoot, canonicalTarget);
     relativeSubdir = rel && rel !== '.' ? rel : '';
 
+    if (options?.simulateGitFailure === true) {
+      gitMetadataOk = false;
+      gitMetadataError = 'Simulated Git metadata failure (simulateGitFailure=true)';
+    }
+
     if (gitMarker.isFile) {
       try {
         const gitFileContent = fs.readFileSync(gitMarker.dotGitPath, 'utf8').trim();
@@ -212,10 +259,13 @@ export function resolveProjectIdentity(workspaceDir) {
       gitDir = canonicalizePath(gitMarker.dotGitPath);
     }
 
-    if (!gitDir) {
-      const gitDirRes = runGitSafe(canonicalRoot, ['rev-parse', '--git-dir']);
+    if (!gitDir || !fs.existsSync(gitDir)) {
+      const gitDirRes = runGitSafe(canonicalRoot, ['rev-parse', '--git-dir'], options);
       if (gitDirRes.ok && gitDirRes.stdout) {
-        gitDir = canonicalizePath(path.resolve(canonicalRoot, gitDirRes.stdout));
+        gitDir = canonicalizePath(path.resolve(canonicalRoot, gitDirRes.stdout.trim()));
+      } else {
+        gitMetadataOk = false;
+        gitMetadataError = gitDirRes.stderr || 'Unable to resolve .git directory';
       }
     }
 
@@ -238,38 +288,60 @@ export function resolveProjectIdentity(workspaceDir) {
     }
 
     // Read HEAD and branch directly from gitDir/HEAD when possible
+    let headRefTarget = null;
     const headFile = gitDir ? path.join(gitDir, 'HEAD') : null;
-    if (headFile && fs.existsSync(headFile)) {
+    if (headFile && fs.existsSync(headFile) && gitMetadataOk) {
       try {
         const headRaw = fs.readFileSync(headFile, 'utf8').trim();
         if (headRaw.startsWith('ref:')) {
-          const refTarget = headRaw.slice(4).trim();
-          branch = refTarget.startsWith('refs/heads/')
-            ? refTarget.slice('refs/heads/'.length)
-            : refTarget;
+          headRefTarget = headRaw.slice(4).trim();
+          branch = headRefTarget.startsWith('refs/heads/')
+            ? headRefTarget.slice('refs/heads/'.length)
+            : headRefTarget;
           isDetachedHead = false;
-          headCommit = resolveGitRefFast(gitDir, gitCommonDir, refTarget) || 'UNBORN';
+          headCommit = resolveGitRefFast(gitDir, gitCommonDir, headRefTarget);
         } else if (/^[0-9a-f]{40}$/i.test(headRaw)) {
           headCommit = headRaw;
           branch = 'DETACHED';
           isDetachedHead = true;
+        } else {
+          gitMetadataOk = false;
+          gitMetadataError = 'Corrupted .git/HEAD content';
         }
-      } catch {
-        // Fallback below
+      } catch (err) {
+        gitMetadataOk = false;
+        gitMetadataError = err.message;
+      }
+    } else if (isGitRepo && (!headFile || !fs.existsSync(headFile))) {
+      gitMetadataOk = false;
+      gitMetadataError = 'Missing .git/HEAD file';
+    }
+
+    if (!headCommit && gitMetadataOk) {
+      const headRes = runGitSafe(canonicalRoot, ['rev-parse', '--verify', 'HEAD'], options);
+      if (headRes.ok && headRes.stdout) {
+        headCommit = headRes.stdout.trim();
+      } else if (headRefTarget) {
+        // Distinguish an unborn branch (no commits yet) from a broken git executable
+        const statusProbe = runGitSafe(canonicalRoot, ['status', '--porcelain=v1'], options);
+        if (statusProbe.ok) {
+          headCommit = 'UNBORN';
+        } else {
+          gitMetadataOk = false;
+          gitMetadataError = statusProbe.stderr || headRes.stderr || 'Git executable failed to verify HEAD';
+        }
+      } else {
+        gitMetadataOk = false;
+        gitMetadataError = headRes.stderr || 'Unable to verify Git HEAD';
       }
     }
 
-    if (!headCommit) {
-      const headRes = runGitSafe(canonicalRoot, ['rev-parse', '--verify', 'HEAD']);
-      headCommit = headRes.ok && headRes.stdout ? headRes.stdout : 'UNBORN';
-    }
-
-    if (headCommit && headCommit !== 'UNBORN') {
+    if (headCommit && headCommit !== 'UNBORN' && gitMetadataOk) {
       const cacheKey = gitCommonDir || canonicalRoot;
       if (rootCommitCache.has(cacheKey)) {
         rootCommit = rootCommitCache.get(cacheKey);
       } else {
-        const rootCommitRes = runGitSafe(canonicalRoot, ['rev-list', '--max-parents=0', 'HEAD', '-n', '1']);
+        const rootCommitRes = runGitSafe(canonicalRoot, ['rev-list', '--max-parents=0', 'HEAD', '-n', '1'], options);
         if (rootCommitRes.ok && rootCommitRes.stdout) {
           rootCommit = rootCommitRes.stdout.split(/\r?\n/)[0].trim();
           rootCommitCache.set(cacheKey, rootCommit);
@@ -334,6 +406,8 @@ export function resolveProjectIdentity(workspaceDir) {
     canonicalTarget,
     relativeSubdir,
     isGitRepo,
+    gitMetadataOk,
+    gitMetadataError,
     isLinkedWorktree,
     gitDir,
     gitCommonDir,
@@ -526,15 +600,39 @@ export function resolveCacheStorage(options = {}) {
 }
 
 /**
- * Redact any accidental secret patterns from strings before persisting to cache (P13 #10).
+ * Classify a state-mutating shell command into a safe semantic signal category
+ * so raw command strings (which might contain tokens, passwords, or URLs) are never persisted (REL-05).
+ *
+ * @param {string} cmd
+ * @returns {string|null}
+ */
+export function classifyCommandMutationSignal(cmd) {
+  const sig = String(cmd || '').trim();
+  if (!sig) return null;
+  if (/\b(npm\s+(install|i|ci|uninstall|remove|update)|pnpm\s+(install|i|add|remove|up)|yarn\s+(install|add|remove)|bun\s+(install|add|remove)|pip\s+install|uv\s+(add|remove|sync)|cargo\s+add|go\s+get)\b/i.test(sig)) {
+    return 'DEPENDENCY_MUTATION';
+  }
+  if (/\bgit\s+(checkout|switch|pull|merge|rebase|reset|clean|worktree)\b/i.test(sig)) {
+    return 'GIT_STATE_MUTATION';
+  }
+  if (/\b(mv|rm|Remove-Item|Move-Item)\b/i.test(sig)) {
+    return 'FILESYSTEM_MUTATION';
+  }
+  return null;
+}
+
+/**
+ * Redact any accidental secret patterns from strings before persisting to cache or telemetry (P13 #10 / REL-05).
  * @param {any} value
  * @returns {any}
  */
 export function sanitizeForCache(value) {
   if (typeof value === 'string') {
     return value
-      .replace(/\b(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,})\b/g, '[REDACTED_TOKEN]')
-      .replace(/((?:token|password|secret|api[_-]?key|authorization)\s*[:=]\s*)(['"]?)[^\s'"]+\2/gi, '$1[REDACTED]');
+      .replace(/https?:\/\/[^/\s:@]+:[^/\s@]+@/gi, 'https://[REDACTED_CREDENTIALS]@')
+      .replace(/\b(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|ghs_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{25,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/g, '[REDACTED_TOKEN]')
+      .replace(/\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[REDACTED_TOKEN]')
+      .replace(/((?:--?(?:token|password|passwd|secret|api[_-]?key|auth[_-]?token)|_authToken|password|secret|api[_-]?key|authorization)\s*[:=\s]\s*)(['"]?)[^\s'"]+\2/gi, '$1[REDACTED]');
   }
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeForCache(item));
@@ -916,8 +1014,9 @@ export function recordDirtyContextHint(workspacePaths = [], hint = {}, options =
         dirtyFiles.add(relPath);
       }
 
-      if (hint.command) {
-        dirtyCommands.add(String(hint.command).slice(0, 120));
+      if (hint.command || hint.signal) {
+        const semanticSignal = hint.signal || classifyCommandMutationSignal(hint.command) || 'COMMAND_MUTATION';
+        dirtyCommands.add(semanticSignal);
       }
 
       record.cacheMetadata = {

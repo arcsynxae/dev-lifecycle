@@ -33,8 +33,8 @@ Activate `dl-run` when:
 ### Phase 1: Discover & Define (Stages 1–2 | Gate A)
 1. **Discover (`Stage 1` — `Identify Project → Load Context → Validate Freshness → Refresh if Needed → Task-Specific Discovery`)**:
    - Run `node ./scripts/discover-project.mjs <workspace-path> --task-files "<files>"` (or follow `dl-discover`).
-   - Reuse persistent project context when `contextCache.freshnessStatus === 'VALID'` (`HIT`), perform targeted section recomputation on `PARTIAL_STALE` (`INCREMENTAL_REFRESH`), or perform full discovery on `MISSING`/`INVALID`/`FULL_STALE`.
-   - Always inspect the current live state of task-specific source files (`P13 #7`) and never rely on unverified cached configuration for `Deep` or high-risk operations (`P13 #8`).
+   - Reuse persistent project context when `profile.contextIntelligence.freshnessStatus === 'FRESH'` (`cacheStatus === 'HIT'`), perform targeted section recomputation on `'PARTIAL_STALE'` (`cacheStatus === 'INCREMENTAL_REFRESH'`), or perform full discovery on `'INITIAL_SNAPSHOT' | 'STALE' | 'CORRUPTED_REBUILT' | 'SCHEMA_MISMATCH_REBUILT' | 'UNVERIFIABLE'` (`cacheStatus === 'MISS' | 'FULL_REDISCOVERY' | 'FORCED_REFRESH'`).
+   - Verify live task-file metadata (`profile.taskSpecificFiles` from `inspectLiveTaskFiles()`, which provides live existence, size, line count, and SHA-256 hash rather than raw source text) and always inspect the current source code via `read_file` before modifying it (`P13 #7`). Never rely on unverified cached configuration for `Deep` or high-risk operations (`P13 #8`).
 2. **Define (`Stage 2`)**:
    - Formulate the `Task Contract`: intended outcome, functional/nonfunctional requirements, authorized scope, constraints, testable acceptance criteria, assumptions, and out-of-scope items.
    - Evaluate **Gate A (Requirement Readiness / Definition of Ready)**:

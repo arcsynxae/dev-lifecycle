@@ -1,0 +1,28 @@
+# Dependencies & Build Outputs
+node_modules/
+dist/
+coverage/
+
+# Temporary, Scratch & OS Files
+*.tmp
+*.bak
+*.orig
+*.swp
+*.rej
+.tmp/
+tmp/
+temp/
+scratch/
+.DS_Store
+Thumbs.db
+
+# Secrets & Environment Files
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.yml
+secrets.yaml

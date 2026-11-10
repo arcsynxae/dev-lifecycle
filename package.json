@@ -1,0 +1,24 @@
+{
+  "name": "dev-lifecycle",
+  "version": "2.1.0",
+  "private": true,
+  "description": "Development, testing, SemVer release automation, and clean runtime packaging workspace for the DevLifecycle Google Antigravity plugin.",
+  "type": "module",
+  "scripts": {
+    "test": "node ./tests/run-all.mjs",
+    "test:baseline": "node ./tests/run-tests.mjs",
+    "test:p13": "node ./tests/context-intelligence.test.mjs",
+    "test:v2.1.1": "node ./tests/reliability-and-release.test.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node ./tooling/sync-version.mjs",
+    "version:sync": "node ./tooling/sync-version.mjs",
+    "version:check": "node ./tooling/sync-version.mjs --check",
+    "package:plugin": "node ./tooling/package-plugin.mjs"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

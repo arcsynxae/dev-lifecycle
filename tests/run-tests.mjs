@@ -21,7 +21,12 @@ import { updateVerificationTelemetry } from '../scripts/post-tool-tracker.mjs';
 import { evaluateStopGate } from '../scripts/stop-gate.mjs';
 import { discoverProject, analyzeCiWorkflows } from '../scripts/discover-project.mjs';
 import { classifyTask, evaluateBoundedRecovery } from '../scripts/classify-task.mjs';
-import { checkCleanRepository, evaluateLifecycleDelivery } from '../scripts/lifecycle-check.mjs';
+import {
+  checkCleanRepository,
+  evaluateLifecycleDelivery,
+  normalizeTestOutcome,
+  summarizeTestResults
+} from '../scripts/lifecycle-check.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,10 +37,24 @@ const results = [];
 function runTest(id, name, fn) {
   const start = performance.now();
   try {
-    const details = fn();
+    const raw = fn();
+    const outcome = normalizeTestOutcome(raw);
     const durationMs = Number((performance.now() - start).toFixed(1));
-    results.push({ id, name, status: 'PASS', durationMs, details: details || 'Verified' });
-    console.log(`  ✔ [${id}] ${name} (${durationMs}ms)`);
+    results.push({
+      id,
+      name,
+      status: outcome.status,
+      durationMs,
+      details: outcome.details,
+      ...(outcome.reason ? { reason: outcome.reason } : {})
+    });
+    if (outcome.status === 'PASS') {
+      console.log(`  ✔ [${id}] ${name} (${durationMs}ms)`);
+    } else if (outcome.status === 'SKIPPED' || outcome.status === 'NOT_RUN') {
+      console.log(`  ⊘ [${id}] ${name} — ${outcome.status}: ${outcome.reason || outcome.details} (${durationMs}ms)`);
+    } else {
+      console.error(`  ✖ [${id}] ${name} — ${outcome.status}: ${outcome.reason || outcome.details} (${durationMs}ms)`);
+    }
   } catch (err) {
     const durationMs = Number((performance.now() - start).toFixed(1));
     results.push({ id, name, status: 'FAIL', durationMs, error: err.message });
@@ -134,17 +153,22 @@ runTest('PKG-02', 'Official CLI strict validator (`agy plugin validate --strict`
   ];
 
   let agyBin = null;
-  for (const cand of candidates) {
-    const res = spawnSync(cand, ['--version'], { encoding: 'utf8' });
-    if (res.status === 0) {
-      agyBin = cand;
-      break;
+  if (process.env.DEV_LIFECYCLE_FORCE_NO_AGY !== '1') {
+    for (const cand of candidates) {
+      const res = spawnSync(cand, ['--version'], { encoding: 'utf8' });
+      if (res.status === 0) {
+        agyBin = cand;
+        break;
+      }
     }
   }
 
-  // Gracefully skip CLI strict verification in standard CI runners where Antigravity App/CLI is not pre-installed
+  // Explicitly report SKIPPED (never PASS) in standard CI runners where Antigravity App/CLI is not installed
   if (!agyBin) {
-    return 'SKIPPED: Antigravity CLI (agy) is not installed in this environment; structural manifest & schema validation passed in PKG-01.';
+    return {
+      status: 'SKIPPED',
+      reason: 'Antigravity CLI (agy) is not installed in this environment; independent structural validation ran in PKG-01.'
+    };
   }
 
   const valRes = spawnSync(agyBin, ['plugin', 'validate', '--strict', '--json', PLUGIN_ROOT], {
@@ -653,17 +677,18 @@ runTest('SCENARIO-J', 'Missing Integrations (Graceful degradation without option
 // ---------------------------------------------------------------------------
 // Summary Report
 // ---------------------------------------------------------------------------
-const passed = results.filter((r) => r.status === 'PASS').length;
-const failed = results.filter((r) => r.status === 'FAIL').length;
+const summary = summarizeTestResults(results);
 
 console.log('\n======================================================================');
-console.log(` Summary: ${passed}/${results.length} passed, ${failed} failed`);
+console.log(
+  ` Summary: ${summary.passed} passed, ${summary.skipped} skipped, ${summary.notRun} not_run, ${summary.blocked} blocked, ${summary.failed} failed (total ${summary.total})`
+);
 console.log('======================================================================');
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ total: results.length, passed, failed, results }, null, 2));
+  console.log(JSON.stringify({ ...summary, results }, null, 2));
 }
 
-if (failed > 0) {
+if (!summary.success) {
   process.exit(1);
 }

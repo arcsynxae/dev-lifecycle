@@ -47,15 +47,16 @@ node "<plugin-root>/scripts/discover-project.mjs" "<workspace-path>" --clear-cac
 # Multi-folder workspace discovery (isolated per root)
 node "<plugin-root>/scripts/discover-project.mjs" --multi-root "<root-a>,<root-b>"
 ```
-The engine automatically executes the 5-step P13 entry flow:
-1. **Identify Project & Worktree**: Computes stable `projectKey` (Git common dir + root commit, or canonical path hash for non-Git repos) and `worktreeKey` (isolating separate Git worktrees and branches).
-2. **Load Persistent Context**: Reads from `${PLUGIN_DATA}` (when available in plugin hooks) or the OS user cache directory (`%LOCALAPPDATA%/dev-lifecycle/Cache` / `~/.cache/dev-lifecycle`), falling back gracefully to session scratch or memory-only mode if storage is restricted.
-3. **Validate Freshness**: Compares `git rev-parse HEAD`, branch, `git status --porcelain`, and SHA-256 fingerprints of key manifests, lockfiles, workspace definitions, framework configs, CI workflows, and instruction files.
-4. **Targeted Incremental Refresh**:
-   - **`VALID` (`HIT`)**: Reuses all 10 cached context sections without re-scanning the repository.
-   - **`PARTIAL_STALE` (`INCREMENTAL_REFRESH`)**: Recomputes **only** the invalidated sections (e.g., `impact` when a single source file changes, or `packageManagers`/`languages`/`frameworks`/`verificationCommands` when `package.json` changes) while preserving unaffected verified sections.
-   - **`MISSING` / `INVALID` / `FULL_STALE`**: Performs full discovery and repairs the cache safely.
-5. **Live Task-Specific Inspection (`P13 #7`)**: Always reads the live state and hash of task-targeted source files (`liveTaskFiles`) directly from disk—never from cached summaries.
+The engine automatically executes the 5-step P13 entry flow and populates `profile.contextIntelligence`:
+1. **Identify Project & Worktree**: Computes stable `projectId` (`dl-proj-<worktreeKey>`), `commonRepoKey` (`projectKey`), and `worktreeKey` (isolating separate Git worktrees and branches).
+2. **Load Persistent Context**: Reads from `${PLUGIN_DATA}` (`plugin-data`, when available in plugin hooks) or the OS user cache directory (`os-user-cache`), falling back gracefully to session scratch (`session-fallback`, `persisted: false`) or in-memory (`memory-only`, `persisted: false`) if storage is restricted.
+3. **Validate Freshness**: Compares `git rev-parse HEAD`, branch, `git status --porcelain=v1 -uall`, and SHA-256 fingerprints of key manifests, lockfiles, workspace definitions, framework configs, CI workflows, and instruction files. If Git commands or repository metadata fail on a Git repository, freshness is marked `UNVERIFIABLE` and never produces a false `HIT`.
+4. **Targeted Incremental Refresh (`profile.contextIntelligence.cacheStatus` & `freshnessStatus`)**:
+   - **`freshnessStatus === 'FRESH'` (`cacheStatus: 'HIT'`)**: Reuses all 10 cached context sections (`sectionsReused`) without re-scanning the repository or rewriting the cache file.
+   - **`freshnessStatus === 'PARTIAL_STALE'` (`cacheStatus: 'INCREMENTAL_REFRESH'`)**: Recomputes **only** the invalidated sections (`sectionsRecomputed`) while preserving unaffected verified sections (`sectionsReused`) and updating `impactAnalysis`.
+   - **`freshnessStatus === 'INITIAL_SNAPSHOT'` (`cacheStatus: 'MISS'`)**: Performs initial full discovery when no prior cache exists.
+   - **`freshnessStatus` in `['STALE', 'CORRUPTED_REBUILT', 'SCHEMA_MISMATCH_REBUILT', 'UNVERIFIABLE']` (`cacheStatus: 'FULL_REDISCOVERY'`)**: Performs full discovery across all 10 sections and atomically repairs the cache.
+5. **Live Task-Specific Metadata Inspection (`P13 #7`)**: `inspectLiveTaskFiles()` populates `profile.taskSpecificFiles` with live file existence (`exists`), byte size (`sizeBytes`), line count (`lineCount`), and SHA-256 hash (`liveSha256`) directly from disk—it does **not** cache or return raw source contents. Always read the current source file with `read_file` before modifying code.
 
 ### Step 2: Inspect Repository Instructions & Local Rules First
 Check for and read existing project guidance before making architectural assumptions:
@@ -90,14 +91,14 @@ Record the exact commands defined by the project (never invent tools not present
 ## 4. Expected Outputs
 
 Produce a **Project Context Profile** (as a session artifact in `<appDataDir>/brain/<conversation-id>/project-context-profile.md` for `Standard`/`Deep` tasks, or concise inline summary for `Quick` tasks) containing:
-1. Project Identity (`projectKey`, `worktreeKey`) & Repository Topology (`standalone` | `monorepo` | `multi-package`)
-2. Context Cache Status (`HIT` | `MISS` | `INCREMENTAL_REFRESH` | `FULL_REFRESH` | `FALLBACK_SESSION`), Storage Tier, Reused vs. Refreshed Sections, and Evidence Fingerprints
+1. Project Identity (`projectId`, `commonRepoKey`, `worktreeKey`) & Repository Topology (`standalone` | `monorepo` | `multi-package`)
+2. Context Intelligence Status (`cacheStatus`: `MISS` | `HIT` | `INCREMENTAL_REFRESH` | `FULL_REDISCOVERY` | `FORCED_REFRESH`; `freshnessStatus`: `INITIAL_SNAPSHOT` | `FRESH` | `PARTIAL_STALE` | `STALE` | `CORRUPTED_REBUILT` | `SCHEMA_MISMATCH_REBUILT` | `UNVERIFIABLE`), `storageTier` (`plugin-data` | `os-user-cache` | `explicit-cache-dir` | `session-fallback` | `memory-only` | `disabled`), `persisted` (`true` | `false`), `sectionsReused` vs. `sectionsRecomputed`, and Evidence Fingerprints
 3. Verified Technology Stack with Installed Versions & Confidence Levels (`HIGH` | `MEDIUM` | `LOW`)
 4. Application & Package Boundaries + Dependency Graph
 5. Exact Development & Verification Commands
 6. Coding Conventions & Architectural Constraints
 7. CI/CD & Deployment Configuration
-8. Live Task-Specific Files Inspected & Unresolved Assumptions
+8. Live Task-Specific File Metadata (`taskSpecificFiles`: `path`, `exists`, `sizeBytes`, `lineCount`, `liveSha256`) & Unresolved Assumptions
 
 ---
 

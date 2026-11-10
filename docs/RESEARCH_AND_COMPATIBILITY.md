@@ -69,3 +69,18 @@ To ensure **DevLifecycle v2** relies strictly on real, supported platform mechan
 - **`ephemeralMessage` in Hook `injectSteps`**: Deprecated in favor of `systemMessage: { systemMessage: "..." }`.
 - **Legacy MCP HTTP+SSE Transport (`/sse`, 2024-11-05 spec)**: Unsupported; Antigravity uses Streamable HTTP (`/mcp`) or `stdio`. `dev-lifecycle` requires zero MCP servers by default (`mcpServers: 0`) so it works offline and across all environments.
 - **Direct Language Server State Mutation RPCs from `run_command`**: `JetboxWriteState`, `DeletePlugin`, and `InstallCustomization` are restricted in `run_command` subprocesses; plugin management uses `agy plugin` CLI or `customization://<dir>` UI links.
+
+---
+
+## 3. v2.1.1 Plugin Packaging, Distribution & Installation Findings
+
+1. **GitHub URL vs. Clean Local Directory Installation (`agy plugin install`)**:
+   - Empirically verified on `agy` CLI `1.5.4`: running `agy plugin install https://github.com/arcsynxae/dev-lifecycle` clones the entire Git repository into `~/.gemini/config/plugins/dev-lifecycle` without filtering `.git/`, `.github/`, `tests/`, `tooling/`, `docs/`, or `examples/`.
+   - Antigravity does **not** currently support an `.agyignore` or `files` allowlist inside `plugin.json` during GitHub URL cloning, nor does it support `#subdirectory` or release asset ZIP URLs directly in `agy plugin install`.
+   - Therefore, `tooling/package-plugin.mjs` builds a clean staged directory (`dist/plugin/dev-lifecycle`) and versioned archive (`dist/dev-lifecycle-v<version>.zip`) containing **only** the 33 runtime files. Installing from `./dist/plugin/dev-lifecycle` (or an extracted release ZIP) results in a 100% clean `~/.gemini/config/plugins/dev-lifecycle` installation with zero development or repository clutter.
+2. **Global vs. Workspace Plugin Scope**:
+   - **Global Scope (`~/.gemini/config/plugins/dev-lifecycle`)**: Installed via `agy plugin install <target>` and enabled in `~/.gemini/config/settings.json` (`"plugins": { "dev-lifecycle": true }`). Available across all workspaces without modifying any user project repository.
+   - **Workspace Scope (`<workspace>/.agents/plugins/dev-lifecycle`)**: Project-local plugin directory with higher discovery precedence (**Workspace > Global > Built-in**).
+3. **Zero Runtime npm Dependency Guarantee**:
+   - `@changesets/cli` is used strictly at development/CI release time (`devDependencies` in private root `package.json`).
+   - All 9 runtime scripts (`scripts/*.mjs`) import only Node.js built-in `node:*` modules, so installed plugins execute immediately on any machine with Node.js `>= 20` without `node_modules`.

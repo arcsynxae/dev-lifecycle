@@ -69,10 +69,16 @@ dev-lifecycle/
 │   ├── discover-project.mjs                  # Universal Project, Monorepo & Incremental Rediscovery CLI
 │   ├── classify-task.mjs                     # 8-factor risk classifier & bounded recovery engine
 │   └── lifecycle-check.mjs                   # DoR, 10-point DoD, Clean Repo & Metrics evaluator
+├── tooling/
+│   ├── sync-version.mjs                      # Deterministic package.json -> plugin.json version sync
+│   └── package-plugin.mjs                    # Clean runtime-only plugin distribution packager (dist/)
 ├── tests/
+│   ├── run-all.mjs                           # Unified runner for all 45 verification scenarios
 │   ├── run-tests.mjs                         # Executable validation + Scenarios A-J acceptance suite
-│   └── context-intelligence.test.mjs         # P13 Persistent Context Intelligence suite (P13-01..P13-14)
+│   ├── context-intelligence.test.mjs         # P13 Persistent Context Intelligence suite (P13-01..P13-14)
+│   └── reliability-and-release.test.mjs      # v2.1.1 Reliability, SemVer, Packaging & Install suite (19 tests)
 ├── docs/
+│   ├── INSTALLATION.md                       # Complete installation, verification & troubleshooting guide
 │   ├── RESEARCH_AND_COMPATIBILITY.md         # Antigravity runtime capability & compatibility matrix
 │   └── ARCHITECTURE.md                       # Detailed design rationale, P13 freshness & gate specs
 └── examples/
@@ -81,32 +87,48 @@ dev-lifecycle/
 
 ---
 
-## 3. Installation & Validation
+## 3. Installation, Clean Packaging & Validation
+
+For full platform-specific installation instructions (Methods A, B, C, and D, updating, enabling/disabling, uninstallation, and troubleshooting), see **[`docs/INSTALLATION.md`](docs/INSTALLATION.md)**.
+
+### Quick Install Options
+
+1. **Direct GitHub Install (Fastest)**:
+   ```bash
+   agy plugin install https://github.com/arcsynxae/dev-lifecycle
+   ```
+2. **Clean Runtime-Only Bundle Install (Zero Dev Clutter — Recommended)**:
+   ```bash
+   npm ci
+   npm run package:plugin
+   agy plugin install ./dist/plugin/dev-lifecycle
+   ```
+3. **Workspace-Scoped Install**:
+   Copy `./dist/plugin/dev-lifecycle` to `<your-project>/.agents/plugins/dev-lifecycle`.
 
 ### Validate Strictly with Antigravity CLI
 ```bash
 agy plugin validate --strict ./
+# Or validate the staged runtime-only bundle:
+agy plugin validate --strict ./dist/plugin/dev-lifecycle
 ```
 
-### Install Locally into Antigravity
-You can install `dev-lifecycle` globally into `~/.gemini/config/plugins/dev-lifecycle` using the Antigravity CLI:
+### Run Executable Verification Suites (45 Scenarios)
 ```bash
-agy plugin install ./
-agy plugin list
-```
-Or register it per-workspace via `.agents/plugins.json`:
-```json
-{
-  "entries": [
-    { "path": "." }
-  ]
-}
-```
-
-### Run Executable Acceptance & P13 Context Intelligence Tests
-```bash
+npm test
+# Or run individual suites:
 node ./tests/run-tests.mjs
 node ./tests/context-intelligence.test.mjs
+node ./tests/reliability-and-release.test.mjs
+```
+
+### Automated Semantic Versioning (Changesets)
+```bash
+# Add a changeset entry for a PR
+npm run changeset
+
+# Verify package.json and plugin.json versions match
+npm run version:check
 ```
 
 ---

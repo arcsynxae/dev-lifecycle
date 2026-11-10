@@ -502,16 +502,20 @@ export function computeMonorepoImpact(topology, packages, changedFiles = []) {
 
   const downstream = new Set();
   const queue = Array.from(directlyAffected);
+  const visited = new Set(directlyAffected);
   while (queue.length > 0) {
     const current = queue.shift();
     for (const pkg of packages || []) {
       if (
+        pkg.name !== current &&
         pkg.internalDependencies?.includes(current) &&
-        !directlyAffected.has(pkg.name) &&
         !downstream.has(pkg.name)
       ) {
         downstream.add(pkg.name);
-        queue.push(pkg.name);
+        if (!visited.has(pkg.name)) {
+          visited.add(pkg.name);
+          queue.push(pkg.name);
+        }
       }
     }
   }
@@ -795,7 +799,7 @@ export function discoverProject(workspaceDir, changedFilesOrOptions = [], maybeO
   const options = Array.isArray(changedFilesOrOptions)
     ? { ...maybeOptions, changedFiles: changedFilesOrOptions }
     : { ...(changedFilesOrOptions || {}) };
-  const identity = resolveProjectIdentity(workspaceDir || process.cwd());
+  const identity = resolveProjectIdentity(workspaceDir || process.cwd(), options);
   const rootDir = identity.canonicalRoot;
   const useCache = options.useCache !== false;
   const forceRefresh = options.forceRefresh === true;
@@ -871,11 +875,25 @@ export function discoverProject(workspaceDir, changedFilesOrOptions = [], maybeO
     'HIGH'
   );
 
-  // Merge explicit options.changedFiles with any detected changed files from freshness check
+  // Snapshot current repository state (reuse freshnessReport snapshot when valid)
+  const currentSnapshot =
+    freshnessReport?.currentSnapshot && sectionsResult.sectionsRecomputed.length === 0
+      ? freshnessReport.currentSnapshot
+      : collectRepositorySnapshot(rootDir, identity, profile.packages, options);
+
+  // Merge explicit options.changedFiles, freshness-detected changes, and live git dirty files (REL-06)
   const explicitChanged = Array.isArray(options.changedFiles) ? options.changedFiles : [];
   const detectedChanged = freshnessReport?.changedFiles || [];
-  const effectiveChangedFiles =
-    explicitChanged.length > 0 ? explicitChanged : detectedChanged;
+  const liveDirtyChanged = (currentSnapshot.gitStatusFiles || []).flatMap((item) =>
+    item.oldPath ? [item.oldPath, item.path] : [item.path]
+  );
+  const effectiveChangedFiles = Array.from(
+    new Set(
+      [...explicitChanged, ...detectedChanged, ...liveDirtyChanged]
+        .filter(Boolean)
+        .map((f) => String(f).replace(/\\/g, '/').replace(/^\.\//, ''))
+    )
+  );
 
   if (effectiveChangedFiles.length > 0) {
     profile.impactAnalysis = computeMonorepoImpact(
@@ -891,50 +909,67 @@ export function discoverProject(workspaceDir, changedFilesOrOptions = [], maybeO
     : effectiveChangedFiles.slice(0, 20);
   profile.taskSpecificFiles = inspectLiveTaskFiles(rootDir, filesToInspect);
 
-  // Snapshot and persist updated context when needed
-  const currentSnapshot =
-    freshnessReport?.currentSnapshot && sectionsResult.sectionsRecomputed.length === 0
-      ? freshnessReport.currentSnapshot
-      : collectRepositorySnapshot(rootDir, identity, profile.packages);
-
   const verifiedAt = new Date().toISOString();
   const evidence = buildContextEvidence(profile, currentSnapshot, identity);
 
   const prevMeta = loadedContext?.record?.cacheMetadata || {};
-  const recordToSave = {
-    schemaVersion: CONTEXT_SCHEMA_VERSION,
-    projectIdentity: identity,
-    workspaceRoots: [rootDir],
-    repositoryMetadata: {
-      isGitRepo: identity.isGitRepo,
-      headCommit: identity.headCommit,
-      branch: identity.branch,
-      isDetachedHead: identity.isDetachedHead,
-      hasDirtyWorkingTree: (currentSnapshot.gitStatusFiles || []).length > 0
-    },
-    snapshot: currentSnapshot,
-    contextSections: sectionsResult.sections,
-    assumptions: sectionsResult.assumptions,
-    evidence,
-    verifiedAt,
-    invalidatedSections: sectionsResult.sectionsRecomputed,
-    cacheMetadata: {
-      createdAt: prevMeta.createdAt || verifiedAt,
-      updatedAt: verifiedAt,
-      hitCount: (prevMeta.hitCount || 0) + (cacheStatus === 'HIT' ? 1 : 0),
-      incrementalRefreshCount:
-        (prevMeta.incrementalRefreshCount || 0) + (cacheStatus === 'INCREMENTAL_REFRESH' ? 1 : 0),
-      fullDiscoveryCount:
-        (prevMeta.fullDiscoveryCount || 0) +
-        (['MISS', 'FULL_REDISCOVERY', 'FORCED_REFRESH'].includes(cacheStatus) ? 1 : 0),
-      dirtyHintFiles: [],
-      dirtyHintCommands: []
-    }
+  const hadDirtyHints =
+    (prevMeta.dirtyHintFiles?.length || 0) > 0 || (prevMeta.dirtyHintCommands?.length || 0) > 0;
+
+  let saveOutcome = {
+    saved: false,
+    skippedUnchangedWrite: false,
+    persistent: false,
+    storageTier: 'disabled',
+    cacheFilePath: null
   };
 
-  let saveOutcome = { saved: false, persistent: false, storageTier: 'disabled', cacheFilePath: null };
   if (useCache) {
-    saveOutcome = saveProjectContext(rootDir, recordToSave, { ...options, identity });
+    if (cacheStatus === 'HIT' && loadedContext?.status === 'FOUND' && !hadDirtyHints) {
+      // Avoid rewriting the full profile JSON on an unchanged cache HIT (Section 8)
+      saveOutcome = {
+        saved: false,
+        skippedUnchangedWrite: true,
+        persistent: Boolean(loadedContext.storage?.persistent),
+        storageTier: loadedContext.storage?.storageTier || 'unknown',
+        cacheFilePath: loadedContext.filePath || null
+      };
+    } else {
+      const recordToSave = {
+        schemaVersion: CONTEXT_SCHEMA_VERSION,
+        projectIdentity: identity,
+        workspaceRoots: [rootDir],
+        repositoryMetadata: {
+          isGitRepo: identity.isGitRepo,
+          headCommit: identity.headCommit,
+          branch: identity.branch,
+          isDetachedHead: identity.isDetachedHead,
+          hasDirtyWorkingTree: (currentSnapshot.gitStatusFiles || []).length > 0
+        },
+        snapshot: currentSnapshot,
+        contextSections: sectionsResult.sections,
+        assumptions: sectionsResult.assumptions,
+        evidence,
+        verifiedAt,
+        invalidatedSections: sectionsResult.sectionsRecomputed,
+        cacheMetadata: {
+          createdAt: prevMeta.createdAt || verifiedAt,
+          updatedAt: verifiedAt,
+          hitCount: (prevMeta.hitCount || 0) + (cacheStatus === 'HIT' ? 1 : 0),
+          incrementalRefreshCount:
+            (prevMeta.incrementalRefreshCount || 0) + (cacheStatus === 'INCREMENTAL_REFRESH' ? 1 : 0),
+          fullDiscoveryCount:
+            (prevMeta.fullDiscoveryCount || 0) +
+            (['MISS', 'FULL_REDISCOVERY', 'FORCED_REFRESH'].includes(cacheStatus) ? 1 : 0),
+          dirtyHintFiles: [],
+          dirtyHintCommands: []
+        }
+      };
+      saveOutcome = {
+        skippedUnchangedWrite: false,
+        ...saveProjectContext(rootDir, recordToSave, { ...options, identity })
+      };
+    }
   }
 
   const durationMs = Number((performance.now() - start).toFixed(2));
@@ -982,6 +1017,8 @@ export function discoverProject(workspaceDir, changedFilesOrOptions = [], maybeO
         : freshnessReport?.status || 'INITIAL_SNAPSHOT',
     storageTier: saveOutcome.storageTier,
     persisted: saveOutcome.persistent,
+    skippedUnchangedWrite: Boolean(saveOutcome.skippedUnchangedWrite),
+    cacheFilePath: saveOutcome.cacheFilePath || null,
     sectionsRecomputed: sectionsResult.sectionsRecomputed,
     sectionsReused: sectionsResult.sectionsReused,
     changedFiles: effectiveChangedFiles,

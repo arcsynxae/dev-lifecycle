@@ -34,6 +34,63 @@ export const GATE_RESULTS = Object.freeze([
 ]);
 
 /**
+ * Normalize a test or check outcome into an explicit GATE_RESULTS status (Section 6 / REL-04).
+ * Ensures SKIPPED and NOT_RUN are never counted as PASS.
+ * @param {any} rawOutcome
+ * @returns {{ status: 'PASS'|'FAIL'|'SKIPPED'|'NOT_RUN'|'BLOCKED', details: string, reason: string|null }}
+ */
+export function normalizeTestOutcome(rawOutcome) {
+  if (rawOutcome && typeof rawOutcome === 'object' && GATE_RESULTS.includes(rawOutcome.status)) {
+    return {
+      status: rawOutcome.status,
+      details: rawOutcome.details || rawOutcome.reason || rawOutcome.status,
+      reason: rawOutcome.reason || rawOutcome.details || null
+    };
+  }
+  if (typeof rawOutcome === 'string') {
+    const trimmed = rawOutcome.trim();
+    const prefixMatch = trimmed.match(/^(PASS|FAIL|SKIPPED|NOT_RUN|BLOCKED)\s*:\s*(.*)$/i);
+    if (prefixMatch) {
+      const status = prefixMatch[1].toUpperCase();
+      const reason = prefixMatch[2].trim();
+      return {
+        status,
+        details: trimmed,
+        reason: reason || null
+      };
+    }
+  }
+  return {
+    status: 'PASS',
+    details: typeof rawOutcome === 'string' && rawOutcome ? rawOutcome : 'Verified',
+    reason: null
+  };
+}
+
+/**
+ * Summarize an array of test/check result records without ever conflating SKIPPED or NOT_RUN with PASS.
+ * @param {Array<{status: string}>} resultList
+ * @returns {object}
+ */
+export function summarizeTestResults(resultList = []) {
+  const counts = { PASS: 0, FAIL: 0, SKIPPED: 0, NOT_RUN: 0, BLOCKED: 0 };
+  for (const r of resultList) {
+    const st = GATE_RESULTS.includes(r?.status) ? r.status : 'NOT_RUN';
+    counts[st] += 1;
+  }
+  return {
+    total: resultList.length,
+    passed: counts.PASS,
+    failed: counts.FAIL,
+    skipped: counts.SKIPPED,
+    notRun: counts.NOT_RUN,
+    blocked: counts.BLOCKED,
+    counts,
+    success: counts.FAIL === 0 && counts.BLOCKED === 0
+  };
+}
+
+/**
  * Inspect a repository directory for temporary task files or accidentally exposed secrets (Section 15).
  * @param {string} workspaceDir
  * @param {string[]} [preservedUserFiles=[]]
